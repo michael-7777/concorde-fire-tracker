@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CF Trainer">
+<meta name="theme-color" content="#C9A84C">
+<title>Concorde Fire — Pre-Season</title>
+<style>
+  :root {
+    --bg: #0A0A0A;
+    --card: #181818;
+    --elevated: #242424;
+    --border: #2E2E2E;
+    --gold: #C9A84C;
+    --gold-dim: #8A6E2A;
+    --red: #C0392B;
+    --text: #E8E8E8;
+    --muted: #888888;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; overflow: hidden; }
+
+  /* Layout */
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  #content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: calc(68px + var(--safe-bottom)); }
+  #content::-webkit-scrollbar { display: none; }
+
+  /* Bottom Nav */
+  #nav { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(18,18,18,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--border); display: flex; padding-bottom: var(--safe-bottom); z-index: 100; }
+  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0; border: none; background: none; color: var(--muted); font-size: 10px; font-weight: 500; letter-spacing: 0.5px; cursor: pointer; transition: color 0.2s; }
+  .nav-btn.active { color: var(--gold); }
+  .nav-btn svg { width: 22px; height: 22px; }
+
+  /* Header */
+  .page-header { padding: calc(var(--safe-top) + 16px) 20px 16px; background: linear-gradient(180deg, rgba(201,168,76,0.08) 0%, transparent 100%); border-bottom: 1px solid var(--border); }
+  .page-header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+  .page-header .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* Phase badge */
+  .phase-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--gold); color: #0A0A0A; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; padding: 4px 10px; border-radius: 3px; text-transform: uppercase; }
+
+  /* Cards */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; margin: 0 16px 12px; overflow: hidden; }
+  .card-header { padding: 14px 16px 10px; display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* Workout rows */
+  .workout-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+  .workout-row:active { background: var(--elevated); }
+  .check-circle { width: 26px; height: 26px; min-width: 26px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; transition: all 0.2s; margin-top: 1px; }
+  .check-circle.done { background: var(--gold); border-color: var(--gold); }
+  .check-circle svg { display: none; }
+  .check-circle.done svg { display: block; }
+  .workout-info { flex: 1; min-width: 0; }
+  .workout-name { font-size: 15px; font-weight: 600; letter-spacing: -0.1px; }
+  .workout-name.done { color: var(--muted); text-decoration: line-through; }
+  .workout-tip { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .workout-score { font-size: 12px; color: var(--gold); margin-top: 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* Day nav */
+  .day-nav { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px; }
+  .day-nav-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: var(--card); color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+  .day-nav-btn:active { background: var(--elevated); }
+  .day-nav-center { flex: 1; text-align: center; }
+  .day-nav-label { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .day-nav-date { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+  /* Today status ring */
+  .today-ring { width: 70px; height: 70px; position: relative; margin: 0 auto 4px; }
+  .today-ring svg { transform: rotate(-90deg); }
+  .ring-track { fill: none; stroke: var(--border); stroke-width: 5; }
+  .ring-fill { fill: none; stroke: var(--gold); stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+  .ring-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: var(--gold); }
+
+  /* Progress section */
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; padding: 20px 20px 8px; }
+
+  /* Chart */
+  .chart-wrap { padding: 0 16px 16px; }
+  .chart-canvas-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+  .chart-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .chart-sub { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+  canvas { display: block; width: 100% !important; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 200; display: flex; align-items: flex-end; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal { background: var(--card); border-radius: 20px 20px 0 0; border-top: 1px solid var(--border); padding: 0 0 calc(var(--safe-bottom) + 8px); width: 100%; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1); max-height: 85vh; overflow-y: auto; }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 0; }
+  .modal-title { font-size: 18px; font-weight: 700; padding: 16px 20px 8px; }
+  .modal-tip { font-size: 14px; color: var(--muted); line-height: 1.6; padding: 0 20px 16px; border-bottom: 1px solid var(--border); }
+  .modal-section { padding: 16px 20px; }
+  .modal-section label { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 8px; }
+  .modal-input { width: 100%; background: var(--elevated); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; color: var(--text); font-size: 16px; font-family: inherit; outline: none; }
+  .modal-input:focus { border-color: var(--gold); }
+  .modal-actions { display: flex; gap: 10px; padding: 0 20px 8px; }
+  .btn { flex: 1; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 700; border: none; cursor: pointer; transition: opacity 0.15s; }
+  .btn:active { opacity: 0.7; }
+  .btn-primary { background: var(--gold); color: #0A0A0A; }
+  .btn-secondary { background: var(--elevated); color: var(--text); }
+
+  /* Program week list */
+  .week-item { margin: 0 16px 10px; }
+  .week-header { background: var(--elevated); border-radius: 12px 12px 0 0; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border); border-bottom: none; cursor: pointer; }
+  .week-header-title { font-size: 15px; font-weight: 800; letter-spacing: 0.5px; }
+  .week-header-badge { font-size: 11px; color: var(--gold); font-weight: 700; }
+  .week-days { background: var(--card); border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; }
+  .week-day-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-top: 1px solid var(--border); cursor: pointer; }
+  .week-day-row:first-child { border-top: none; }
+  .week-day-name { font-size: 14px; font-weight: 600; }
+  .week-day-count { font-size: 12px; color: var(--muted); }
+  .week-day-prog { display: flex; gap: 4px; align-items: center; }
+  .prog-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .prog-dot.done { background: var(--gold); }
+
+  /* Streak banner */
+  .streak-banner { margin: 16px 16px 0; background: linear-gradient(135deg, rgba(201,168,76,0.15) 0%, rgba(192,57,43,0.1) 100%); border: 1px solid rgba(201,168,76,0.3); border-radius: 14px; padding: 14px 16px; display: flex; align-items: center; gap: 14px; }
+  .streak-num { font-size: 32px; font-weight: 900; color: var(--gold); line-height: 1; font-variant-numeric: tabular-nums; }
+  .streak-label { font-size: 13px; font-weight: 600; }
+  .streak-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* Install banner */
+  .install-banner { margin: 12px 16px 0; background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.25); border-radius: 12px; padding: 12px 14px; font-size: 13px; color: var(--muted); line-height: 1.5; display: none; }
+  .install-banner strong { color: var(--gold); }
+  .install-banner.show { display: block; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="content"></div>
+  <nav id="nav">
+    <button class="nav-btn active" onclick="showTab('today')" id="tab-today">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Today
+    </button>
+    <button class="nav-btn" onclick="showTab('program')" id="tab-program">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Program
+    </button>
+    <button class="nav-btn" onclick="showTab('progress')" id="tab-progress">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Progress
+    </button>
+  </nav>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-tip" id="modal-tip"></div>
+    <div class="modal-section" id="modal-score-section" style="display:none">
+      <label id="modal-score-label">Score / Time</label>
+      <input class="modal-input" id="modal-score-input" type="text" placeholder="e.g. 2750m or 24:30">
+    </div>
+    <div class="modal-section">
+      <label>Notes</label>
+      <textarea class="modal-input" id="modal-notes-input" rows="3" placeholder="How did it feel? Any adjustments?"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveWorkout()">Mark Complete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const PROGRAM = [
+  {
+    phase: "FOUNDATION", weeks: "1–2",
+    days: [
+      { day: "MONDAY", dates: ["Jun 22","Jun 29"], workouts: [
+        { id:"w1_mon_a", name:"Half Full (Sprints)", tip:"Sprint pattern: 5×50yds then 10×100yds. Rest 20s between each. Pattern is FULL-FULL-HALF — go hard, hard, then ease off the last set.", record: null },
+        { id:"w1_mon_b", name:"Full Body – 5 Rounds", tip:"20 High Knees (×2), 20 Squat Jumps, 20 Mtn Climbers, 20 Burpees, 60s Plank. Keep rest minimal between exercises; 1–2 min between rounds.", record: null }
+      ]},
+      { day: "TUESDAY", dates: ["Jun 23","Jun 30"], workouts: [
+        { id:"w1_tue_a", name:"Long Run", tip:"3–5 miles at a conversational pace — you should be able to talk, but not sing. Aim 20–25 mins. Building your aerobic base.", record: "Time (e.g. 24:30)" }
+      ]},
+      { day: "WEDNESDAY", dates: ["Jun 24","Jul 1"], workouts: [
+        { id:"w1_wed_a", name:"Box Sprints", tip:"20×20yds with 5s rest between reps. Repeat 6 sets with 2 min rest between sets. Short rest = speed endurance training.", record: null },
+        { id:"w1_wed_b", name:"Upper Body – 5 Rounds", tip:"20 Push Ups, 20 Tricep Dips, 20 Diamond Push Ups, 20 Shoulder Taps, 60s Plank. Diamond = hands form a diamond shape, targets inner chest.", record: null }
+      ]},
+      { day: "THURSDAY", dates: ["Jun 25","Jul 2"], workouts: [
+        { id:"w1_thu_a", name:"Recovery Run", tip:"Easy 2 miles — slow and steady. Active recovery. Keep heart rate low. Aim 15–20 mins. Don't push it.", record: "Time (e.g. 18:00)" }
+      ]},
+      { day: "FRIDAY", dates: ["Jun 26","Jul 3"], workouts: [
+        { id:"w1_fri_a", name:"Speed EMOM", tip:"EMOM = Every Minute On the Minute. Jog 20 mins total; sprint hard for 15s at the start of each minute, jog the rest. Builds speed while fatigued.", record: null },
+        { id:"w1_fri_b", name:"The Core", tip:"20 Crunches, 20 Knees to Chest, 20 Toe Taps, 20 Flutter Kicks, 60s Plank. Keep lower back pressed to floor on flutter kicks.", record: null }
+      ]},
+      { day: "SATURDAY", dates: ["Jun 27","Jul 4"], workouts: [
+        { id:"w1_sat_a", name:"Pick Up Soccer", tip:"Play La Liga or other local game (times TBD). Fun but intentional — work on first touch, positioning, and communication.", record: null }
+      ]},
+      { day: "SUNDAY", dates: ["Jun 28","Jul 5"], workouts: [
+        { id:"w1_sun_a", name:"Push Till You Drop", tip:"8 minutes: do as many push ups as possible. If you pause OR stop, complete a 100yd run before continuing. Record your total push up count.", record: "Push ups completed" },
+        { id:"w1_sun_b", name:"Cooper Test", tip:"Run as far as you can in exactly 12 minutes. Record the distance. Elite soccer players cover 2800–3200m. This is your Week 1–2 baseline.", record: "Distance (e.g. 2600m)" }
+      ]},
+    ]
+  },
+  {
+    phase: "DEVELOPING", weeks: "3–4",
+    days: [
+      { day: "MONDAY", dates: ["Jul 6","Jul 13"], workouts: [
+        { id:"w3_mon_a", name:"Pyramids", tip:"10×20yds, 8×40yds, 6×60yds, 4×80yds, 2×100yds — rest 20s between each run. Volume goes up then down like a pyramid. Focus on acceleration.", record: null },
+        { id:"w3_mon_b", name:"Full Body – 5 Rounds", tip:"25 reps now: High Knees (×2), Squat Jumps, Mtn Climbers, Burpees + 90s Plank. Increased from Week 1–2.", record: null }
+      ]},
+      { day: "TUESDAY", dates: ["Jul 7","Jul 14"], workouts: [
+        { id:"w3_tue_a", name:"Long Run", tip:"4–5 miles. Slightly longer than Week 1–2. Maintain steady conversational pace.", record: "Time (e.g. 38:00)" }
+      ]},
+      { day: "WEDNESDAY", dates: ["Jul 8","Jul 15"], workouts: [
+        { id:"w3_wed_a", name:"Half Way Hell", tip:"8×50yds (half field) with 10s rest between reps. Repeat 6 sets with 2 min rest. More reps than Box Sprints — higher total volume.", record: null },
+        { id:"w3_wed_b", name:"Upper Body – 5 Rounds", tip:"25 reps: Push Ups, Tricep Dips, Diamond, Shoulder Taps + 60s Plank. Progress from Week 1–2.", record: null }
+      ]},
+      { day: "THURSDAY", dates: ["Jul 9","Jul 16"], workouts: [
+        { id:"w3_thu_a", name:"Recovery Run", tip:"Easy 2 miles. Same as Week 1–2. Keep it gentle — Wednesday was hard.", record: "Time (e.g. 18:00)" }
+      ]},
+      { day: "FRIDAY", dates: ["Jul 10","Jul 17"], workouts: [
+        { id:"w3_fri_a", name:"The Ladder", tip:"Jog 50yds | Sprint 10/Jog 40 | Sprint 20/Jog 30 | Sprint 30/Jog 20 | Sprint 40/Jog 10 | Full Sprint 50. Repeat 6×. Sprint portion increases like a ladder.", record: null },
+        { id:"w3_fri_b", name:"The Core", tip:"25 reps: Crunches, Knees to Chest, Toe Taps, Flutter Kicks + 90s Plank. Core is key for protecting your back and generating power on the ball.", record: null }
+      ]},
+      { day: "SATURDAY", dates: ["Jul 11","Jul 18"], workouts: [
+        { id:"w3_sat_a", name:"Pick Up Soccer", tip:"La Liga or local game. Apply your improved fitness — you should notice more stamina than early sessions.", record: null }
+      ]},
+      { day: "SUNDAY", dates: ["Jul 12","Jul 19"], workouts: [
+        { id:"w3_sun_a", name:"Plank +10s", tip:"Start: 10s plank, 10s rest. Then 20s plank, 20s rest. Add 10s each round until you fail. Tests core endurance.", record: "Rounds completed" },
+        { id:"w3_sun_b", name:"Cooper Test", tip:"Run as far as possible in 12 mins. Compare to your Week 1–2 score. You should see improvement.", record: "Distance (e.g. 2750m)" }
+      ]},
+    ]
+  },
+  {
+    phase: "PERFORMANCE", weeks: "5–6",
+    days: [
+      { day: "MONDAY", dates: ["Jul 20","Jul 27"], workouts: [
+        { id:"w5_mon_a", name:"Every Line", tip:"16×6yds, 5×18yds, 4×Half, 3×Opp 18, 2×Opp 6, 1×Full. Uses every line on the soccer field. Rest 20s between runs.", record: null },
+        { id:"w5_mon_b", name:"Full Body – 5 Rounds", tip:"30 reps now: High Knees (×2), Squat Jumps, Mtn Climbers (×2), Burpees + 120s Plank. Hardest full body week.", record: null }
+      ]},
+      { day: "TUESDAY", dates: ["Jul 21","Jul 28"], workouts: [
+        { id:"w5_tue_a", name:"Long Run", tip:"5 miles. Peak long run of the program. If you've been consistent, this should feel manageable. Don't race it — steady effort.", record: "Time (e.g. 42:00)" }
+      ]},
+      { day: "WEDNESDAY", dates: ["Jul 22","Jul 29"], workouts: [
+        { id:"w5_wed_a", name:"Broken 400s", tip:"4×100yds (full field) with 10s rest between reps. Repeat 6 sets with 2 min between. A 'broken 400' splits the distance into reps — speed at high volume.", record: null },
+        { id:"w5_wed_b", name:"Upper Body – 5 Rounds", tip:"30 reps: Push Ups, Tricep Dips, Diamond, Shoulder Taps + 120s Plank. Peak upper body week. 2-min plank tests full core endurance.", record: null }
+      ]},
+      { day: "THURSDAY", dates: ["Jul 23","Jul 30"], workouts: [
+        { id:"w5_thu_a", name:"Recovery Run", tip:"Easy 2 miles. Critical after heavy Wednesday. Don't skip — it flushes lactate and speeds recovery.", record: "Time (e.g. 18:00)" }
+      ]},
+      { day: "FRIDAY", dates: ["Jul 24","Jul 31"], workouts: [
+        { id:"w5_fri_a", name:"Six Sided Field", tip:"Jog all 6 sides of the field | Sprint 1/Jog 5 | Sprint 2/Jog 4 | up to full sprint. Side lines split at half make 6 sides. Creative field-based conditioning.", record: null },
+        { id:"w5_fri_b", name:"The Core", tip:"30 reps: Crunches, Knees to Chest, Toe Taps, Flutter Kicks + 100s Plank. Peak core volume.", record: null }
+      ]},
+      { day: "SATURDAY", dates: ["Jul 25","Aug 1"], workouts: [
+        { id:"w5_sat_a", name:"Pick Up Soccer", tip:"La Liga or local game. Six weeks in — you should feel significantly fitter than week one.", record: null }
+      ]},
+      { day: "SUNDAY", dates: ["Jul 26","Aug 2"], workouts: [
+        { id:"w5_sun_a", name:"Death By Burpees", tip:"Each minute: run 100m then do burpees. Min 1 = 1 burpee. Min 2 = 2 burpees. Add one per minute until you can't finish in time. Record max rounds.", record: "Max rounds completed" },
+        { id:"w5_sun_b", name:"Cooper Test", tip:"Final Cooper Test. Compare all 3 scores. Meaningful improvement = your aerobic base is season-ready.", record: "Distance (e.g. 2900m)" }
+      ]},
+    ]
+  }
+];
+
+// ─── STORAGE ─────────────────────────────────────────────────────────────────
+function getKey(workoutId, weekIndex) { return `cf_${weekIndex}_${workoutId}`; }
+function saveEntry(workoutId, weekIndex, data) {
+  localStorage.setItem(getKey(workoutId, weekIndex), JSON.stringify(data));
+}
+function getEntry(workoutId, weekIndex) {
+  try { return JSON.parse(localStorage.getItem(getKey(workoutId, weekIndex))); } catch { return null; }
+}
+function getAllEntries() {
+  const all = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('cf_')) {
+      try { all.push({ key: k, data: JSON.parse(localStorage.getItem(k)) }); } catch {}
+    }
+  }
+  return all;
+}
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let currentTab = 'today';
+let currentDayIndex = getCurrentDayIndex();
+let currentPhaseIndex = 0;
+let modalWorkout = null;
+let modalWeekIndex = null;
+
+function getCurrentDayIndex() {
+  // Days are MON=0..SUN=6
+  const d = new Date().getDay(); // 0=Sun
+  return d === 0 ? 6 : d - 1;
+}
+function getCurrentPhaseIndex() {
+  // Auto-detect based on date — Jun 22 = start
+  const start = new Date('2025-06-22');
+  const now = new Date();
+  const diffDays = Math.floor((now - start) / 86400000);
+  if (diffDays < 14) return 0;
+  if (diffDays < 28) return 1;
+  return 2;
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────────
+function showTab(tab) {
+  currentTab = tab;
+  ['today','program','progress'].forEach(t => {
+    document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+  });
+  render();
+}
+
+function render() {
+  const el = document.getElementById('content');
+  if (currentTab === 'today') el.innerHTML = renderToday();
+  else if (currentTab === 'program') el.innerHTML = renderProgram();
+  else el.innerHTML = renderProgress();
+  if (currentTab === 'progress') drawCharts();
+}
+
+// ─── TODAY ───────────────────────────────────────────────────────────────────
+function renderToday() {
+  const phaseIdx = getCurrentPhaseIndex();
+  const phase = PROGRAM[phaseIdx];
+  const dayData = phase.days[currentDayIndex];
+  const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+
+  // Count completions for today
+  const done = dayData.workouts.filter(w => {
+    const e = getEntry(w.id, phaseIdx);
+    return e && e.completed;
+  }).length;
+  const total = dayData.workouts.length;
+  const pct = total > 0 ? Math.round((done/total)*100) : 0;
+  const circ = 2 * Math.PI * 28;
+  const offset = circ - (circ * pct / 100);
+
+  // Streak calc
+  const streak = calcStreak();
+
+  let html = `<div class="page-header">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div class="phase-badge">Week ${phase.weeks} · ${phase.phase}</div>
+    </div>
+    <h1>${dateStr}</h1>
+  </div>`;
+
+  // Install hint (shown if not standalone)
+  if (!window.navigator.standalone) {
+    html += `<div class="install-banner show">📲 <strong>Add to Home Screen:</strong> tap the Share button in Safari → "Add to Home Screen" to use this like an app.</div>`;
+  }
+
+  // Streak
+  if (streak > 0) {
+    html += `<div class="streak-banner">
+      <div>
+        <div class="streak-num">${streak}</div>
+      </div>
+      <div>
+        <div class="streak-label">Day${streak !== 1 ? 's' : ''} with at least one workout done</div>
+        <div class="streak-sub">Keep it going 🔥</div>
+      </div>
+    </div>`;
+  }
+
+  // Day nav
+  html += `<div class="day-nav">
+    <button class="day-nav-btn" onclick="navDay(-1)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="day-nav-center">
+      <div class="today-ring">
+        <svg width="70" height="70" viewBox="0 0 70 70">
+          <circle class="ring-track" cx="35" cy="35" r="28"/>
+          <circle class="ring-fill" cx="35" cy="35" r="28" stroke-dasharray="${circ}" stroke-dashoffset="${offset}"/>
+        </svg>
+        <div class="ring-text">${pct}%</div>
+      </div>
+      <div class="day-nav-label">${dayNames[currentDayIndex]}</div>
+      <div class="day-nav-date">${done}/${total} workouts done</div>
+    </div>
+    <button class="day-nav-btn" onclick="navDay(1)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </div>`;
+
+  // Workouts
+  html += `<div class="card">`;
+  dayData.workouts.forEach(w => {
+    const entry = getEntry(w.id, phaseIdx);
+    const isDone = entry && entry.completed;
+    html += `<div class="workout-row" onclick="openModal('${w.id}',${phaseIdx})">
+      <div class="check-circle${isDone ? ' done' : ''}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="workout-info">
+        <div class="workout-name${isDone ? ' done' : ''}">${w.name}</div>
+        <div class="workout-tip">${w.tip.substring(0,90)}${w.tip.length>90?'…':''}</div>
+        ${entry && entry.score ? `<div class="workout-score">📊 ${entry.score}</div>` : ''}
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${isDone ? 'var(--gold)' : 'var(--border)'}" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>`;
+  });
+  html += `</div>`;
+
+  return html;
+}
+
+function navDay(dir) {
+  currentDayIndex = (currentDayIndex + 7 + dir) % 7;
+  render();
+}
+
+function calcStreak() {
+  let streak = 0;
+  const entries = getAllEntries();
+  // Simple: count days with any completion (naive streak — days with any done entry)
+  const doneDays = new Set(entries.filter(e => e.data && e.data.completed).map(e => e.data.date || ''));
+  doneDays.delete('');
+  // Count consecutive days up to today
+  const today = new Date(); today.setHours(0,0,0,0);
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const ds = d.toISOString().split('T')[0];
+    if (doneDays.has(ds)) streak++;
+    else if (i > 0) break;
+  }
+  return streak;
+}
+
+// ─── PROGRAM ─────────────────────────────────────────────────────────────────
+function renderProgram() {
+  let html = `<div class="page-header"><h1>Full Program</h1><div class="sub">6-Week Pre-Season Plan</div></div>`;
+  PROGRAM.forEach((phase, pi) => {
+    html += `<div class="section-label">Week ${phase.weeks} — ${phase.phase}</div>`;
+    phase.days.forEach(dayData => {
+      const done = dayData.workouts.filter(w => { const e = getEntry(w.id, pi); return e && e.completed; }).length;
+      const total = dayData.workouts.length;
+      const dots = dayData.workouts.map(w => {
+        const e = getEntry(w.id, pi);
+        return `<div class="prog-dot${e && e.completed ? ' done' : ''}"></div>`;
+      }).join('');
+      html += `<div class="card" style="margin-bottom:0;border-radius:0;border-bottom:none" onclick="openDayDetail(${pi}, '${dayData.day}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;">
+          <div>
+            <div style="font-size:15px;font-weight:700">${dayData.day}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">${dayData.dates.join(' · ')}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex;gap:4px">${dots}</div>
+            <div style="font-size:12px;color:${done===total?'var(--gold)':'var(--muted)'};font-weight:600">${done}/${total}</div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--border)" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+        </div>
+      </div>`;
+    });
+    html += `<div style="height:1px;background:var(--border);margin:0 16px 16px"></div>`;
+  });
+  return html;
+}
+
+function openDayDetail(phaseIdx, dayName) {
+  const phase = PROGRAM[phaseIdx];
+  const dayData = phase.days.find(d => d.day === dayName);
+  if (!dayData) return;
+
+  // Render a full day view by temporarily replacing content
+  const el = document.getElementById('content');
+  let html = `<div class="page-header" style="display:flex;align-items:center;gap:10px">
+    <button onclick="render()" style="background:none;border:none;color:var(--gold);font-size:15px;font-weight:600;padding:0;cursor:pointer;">← Back</button>
+    <div>
+      <h1 style="font-size:18px">${dayData.day}</h1>
+      <div class="sub">Week ${phase.weeks} · ${phase.phase}</div>
+    </div>
+  </div>
+  <div class="card">`;
+  dayData.workouts.forEach(w => {
+    const entry = getEntry(w.id, phaseIdx);
+    const isDone = entry && entry.completed;
+    html += `<div class="workout-row" onclick="openModal('${w.id}',${phaseIdx})">
+      <div class="check-circle${isDone ? ' done' : ''}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="workout-info">
+        <div class="workout-name${isDone ? ' done' : ''}">${w.name}</div>
+        <div class="workout-tip">${w.tip}</div>
+        ${entry && entry.score ? `<div class="workout-score">📊 ${entry.score}</div>` : ''}
+        ${entry && entry.notes ? `<div class="workout-tip" style="margin-top:4px;color:var(--text)">${entry.notes}</div>` : ''}
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+// ─── PROGRESS ────────────────────────────────────────────────────────────────
+function renderProgress() {
+  // Cooper test data
+  const cooperIds = ['w1_sun_b','w3_sun_b','w5_sun_b'];
+  const cooperLabels = ['Week 1–2','Week 3–4','Week 5–6'];
+  const cooperScores = cooperIds.map((id, i) => {
+    const phaseIdx = i;
+    const e = getEntry(id, phaseIdx);
+    if (!e || !e.score) return null;
+    // Try to parse number from score
+    const m = e.score.match(/\d+/);
+    return m ? parseInt(m[0]) : null;
+  });
+  const hasCooper = cooperScores.some(s => s !== null);
+
+  // Push up data
+  const pushIds = ['w1_sun_a'];
+  const pushScores = [0].map(pi => {
+    const e = getEntry('w1_sun_a', 0);
+    if (!e || !e.score) return null;
+    const m = e.score.match(/\d+/);
+    return m ? parseInt(m[0]) : null;
+  });
+
+  // Long run data
+  const runIds = [
+    {id:'w1_tue_a', pi:0, label:'Wk1-2 Tue'},
+    {id:'w3_tue_a', pi:1, label:'Wk3-4 Tue'},
+    {id:'w5_tue_a', pi:2, label:'Wk5-6 Tue'},
+  ];
+
+  let html = `<div class="page-header"><h1>Progress</h1><div class="sub">Your performance over 6 weeks</div></div>`;
+
+  // Summary stats
+  const totalDone = getAllEntries().filter(e => e.data && e.data.completed).length;
+  const totalWorkouts = PROGRAM.reduce((s, p) => s + p.days.reduce((sd, d) => sd + d.workouts.length, 0), 0);
+  html += `<div style="display:flex;gap:10px;padding:16px 16px 0">
+    <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center">
+      <div style="font-size:28px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums">${totalDone}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Workouts Done</div>
+    </div>
+    <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center">
+      <div style="font-size:28px;font-weight:900;color:var(--text);font-variant-numeric:tabular-nums">${totalWorkouts}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Total Planned</div>
+    </div>
+    <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center">
+      <div style="font-size:28px;font-weight:900;color:var(--text);font-variant-numeric:tabular-nums">${totalWorkouts > 0 ? Math.round(totalDone/totalWorkouts*100) : 0}%</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Complete</div>
+    </div>
+  </div>`;
+
+  // Cooper test chart
+  html += `<div class="section-label">Cooper Test (12-Min Run)</div>
+  <div class="chart-wrap">
+    <div class="chart-canvas-wrap">
+      <div class="chart-title">Distance Over Time</div>
+      <div class="chart-sub">meters — higher is better · elite: 2800–3200m</div>
+      <canvas id="chart-cooper" height="160"></canvas>
+      ${!hasCooper ? '<div class="empty" style="padding:20px 0"><div class="empty-icon">📍</div>Complete your first Cooper Test on Sunday to see your progress here</div>' : ''}
+    </div>
+  </div>`;
+
+  // Long run chart
+  html += `<div class="section-label">Long Run Times</div>
+  <div class="chart-wrap">
+    <div class="chart-canvas-wrap">
+      <div class="chart-title">Tuesday Long Run</div>
+      <div class="chart-sub">minutes — lower is better as distance increases</div>
+      <canvas id="chart-run" height="160"></canvas>
+    </div>
+  </div>`;
+
+  // All records
+  html += `<div class="section-label">All Recorded Scores</div>`;
+  let hasAny = false;
+  PROGRAM.forEach((phase, pi) => {
+    phase.days.forEach(dayData => {
+      dayData.workouts.forEach(w => {
+        if (!w.record) return;
+        const e = getEntry(w.id, pi);
+        if (!e || !e.completed) return;
+        hasAny = true;
+        html += `<div class="card">
+          <div style="padding:14px 16px">
+            <div style="font-size:11px;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Week ${phase.weeks} · ${dayData.day}</div>
+            <div style="font-size:15px;font-weight:700">${w.name}</div>
+            ${e.score ? `<div style="font-size:22px;font-weight:900;color:var(--gold);margin-top:8px;font-variant-numeric:tabular-nums">${e.score}</div>` : ''}
+            ${e.notes ? `<div style="font-size:13px;color:var(--muted);margin-top:6px">${e.notes}</div>` : ''}
+          </div>
+        </div>`;
+      });
+    });
+  });
+  if (!hasAny) {
+    html += `<div class="empty"><div class="empty-icon">🏆</div>Scores you record will appear here</div>`;
+  }
+
+  html += `<div style="height:20px"></div>`;
+  return html;
+}
+
+function drawCharts() {
+  drawCooperChart();
+  drawRunChart();
+}
+
+function drawCooperChart() {
+  const canvas = document.getElementById('chart-cooper');
+  if (!canvas) return;
+  const cooperData = [
+    { label: 'Wk 1–2', id: 'w1_sun_b', pi: 0 },
+    { label: 'Wk 3–4', id: 'w3_sun_b', pi: 1 },
+    { label: 'Wk 5–6', id: 'w5_sun_b', pi: 2 },
+  ];
+  const points = cooperData.map(d => {
+    const e = getEntry(d.id, d.pi);
+    if (!e || !e.score) return null;
+    const m = e.score.match(/\d+/);
+    return m ? parseInt(m[0]) : null;
+  });
+  drawLineChart(canvas, cooperData.map(d => d.label), points, 'var(--gold)', 2400, 3400);
+}
+
+function drawRunChart() {
+  const canvas = document.getElementById('chart-run');
+  if (!canvas) return;
+  const runData = [
+    { label: 'Wk 1–2', id: 'w1_tue_a', pi: 0 },
+    { label: 'Wk 3–4', id: 'w3_tue_a', pi: 1 },
+    { label: 'Wk 5–6', id: 'w5_tue_a', pi: 2 },
+  ];
+  const points = runData.map(d => {
+    const e = getEntry(d.id, d.pi);
+    if (!e || !e.score) return null;
+    const s = e.score;
+    // Parse "MM:SS" or just number
+    const mMatch = s.match(/(\d+):(\d+)/);
+    if (mMatch) return parseInt(mMatch[1]) + parseInt(mMatch[2])/60;
+    const nMatch = s.match(/\d+/);
+    return nMatch ? parseInt(nMatch[0]) : null;
+  });
+  drawLineChart(canvas, runData.map(d => d.label), points, '#7EB8D4', 0, 60);
+}
+
+function drawLineChart(canvas, labels, values, color, minY, maxY) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width || canvas.offsetWidth || 300;
+  const H = 160;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const pad = { top: 16, right: 20, bottom: 32, left: 48 };
+  const chartW = W - pad.left - pad.right;
+  const chartH = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const validVals = values.filter(v => v !== null);
+  if (validVals.length === 0) return;
+
+  const dataMin = Math.min(...validVals);
+  const dataMax = Math.max(...validVals);
+  const yMin = Math.min(minY, dataMin * 0.95);
+  const yMax = Math.max(maxY, dataMax * 1.05);
+
+  function xPos(i) { return pad.left + (i / (labels.length - 1)) * chartW; }
+  function yPos(v) { return pad.top + chartH - ((v - yMin) / (yMax - yMin)) * chartH; }
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (chartH / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + chartW, y); ctx.stroke();
+  }
+
+  // Y labels
+  ctx.fillStyle = 'rgba(136,136,136,0.8)';
+  ctx.font = '10px -apple-system';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 2; i++) {
+    const v = yMin + ((yMax - yMin) / 2) * i;
+    const y = pad.top + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+    ctx.fillText(Math.round(v), pad.left - 6, y + 3);
+  }
+
+  // X labels
+  ctx.textAlign = 'center';
+  labels.forEach((l, i) => { ctx.fillText(l, xPos(i), H - 8); });
+
+  // Fill area under line
+  const pts = values.map((v, i) => v !== null ? { x: xPos(i), y: yPos(v) } : null);
+  const validPts = pts.filter(p => p !== null);
+  if (validPts.length >= 2) {
+    ctx.beginPath();
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH);
+    grad.addColorStop(0, color.replace('var(--gold)', '#C9A84C') + '40');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.moveTo(validPts[0].x, pad.top + chartH);
+    validPts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(validPts[validPts.length-1].x, pad.top + chartH);
+    ctx.closePath();
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = color.includes('var') ? '#C9A84C' : color;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    validPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+
+    // Dots
+    validPts.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = color.includes('var') ? '#C9A84C' : color;
+      ctx.fill();
+      ctx.strokeStyle = '#0A0A0A';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    });
+
+    // Value labels
+    ctx.fillStyle = color.includes('var') ? '#C9A84C' : color;
+    ctx.font = 'bold 11px -apple-system';
+    ctx.textAlign = 'center';
+    validPts.forEach(p => {
+      const v = values[pts.indexOf(p)];
+      ctx.fillText(Math.round(v), p.x, p.y - 10);
+    });
+  }
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────────────────
+function openModal(workoutId, phaseIdx) {
+  let workout = null;
+  let day = null;
+  PROGRAM[phaseIdx].days.forEach(d => {
+    d.workouts.forEach(w => { if (w.id === workoutId) { workout = w; day = d; } });
+  });
+  if (!workout) return;
+
+  modalWorkout = workout;
+  modalWeekIndex = phaseIdx;
+
+  const entry = getEntry(workoutId, phaseIdx) || {};
+  document.getElementById('modal-title').textContent = workout.name;
+  document.getElementById('modal-tip').textContent = workout.tip;
+
+  const scoreSection = document.getElementById('modal-score-section');
+  if (workout.record) {
+    scoreSection.style.display = 'block';
+    document.getElementById('modal-score-label').textContent = workout.record;
+    document.getElementById('modal-score-input').value = entry.score || '';
+  } else {
+    scoreSection.style.display = 'none';
+    document.getElementById('modal-score-input').value = '';
+  }
+  document.getElementById('modal-notes-input').value = entry.notes || '';
+
+  const btn = document.querySelector('#modal .btn-primary');
+  if (entry && entry.completed) {
+    btn.textContent = 'Update';
+    btn.style.background = 'var(--elevated)';
+    btn.style.color = 'var(--text)';
+  } else {
+    btn.textContent = 'Mark Complete';
+    btn.style.background = 'var(--gold)';
+    btn.style.color = '#0A0A0A';
+  }
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modal-overlay')) return;
+  document.getElementById('modal-overlay').classList.remove('open');
+  modalWorkout = null;
+}
+
+function saveWorkout() {
+  if (!modalWorkout) return;
+  const score = document.getElementById('modal-score-input').value.trim();
+  const notes = document.getElementById('modal-notes-input').value.trim();
+  const today = new Date().toISOString().split('T')[0];
+  saveEntry(modalWorkout.id, modalWeekIndex, { completed: true, score, notes, date: today });
+  document.getElementById('modal-overlay').classList.remove('open');
+  modalWorkout = null;
+  render();
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
