@@ -293,23 +293,18 @@ function getAllEntries() {
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentTab = 'today';
 let currentDayIndex = getCurrentDayIndex();
-let currentPhaseIndex = 0;
+let currentPhaseIndex = parseInt(localStorage.getItem('cf_phase') || '0');
 let modalWorkout = null;
 let modalWeekIndex = null;
 
 function getCurrentDayIndex() {
-  // Days are MON=0..SUN=6
   const d = new Date().getDay(); // 0=Sun
   return d === 0 ? 6 : d - 1;
 }
-function getCurrentPhaseIndex() {
-  // Auto-detect based on date — Jun 22 = start
-  const start = new Date('2025-06-22');
-  const now = new Date();
-  const diffDays = Math.floor((now - start) / 86400000);
-  if (diffDays < 14) return 0;
-  if (diffDays < 28) return 1;
-  return 2;
+function setPhase(idx) {
+  currentPhaseIndex = idx;
+  localStorage.setItem('cf_phase', idx);
+  render();
 }
 
 // ─── TABS ────────────────────────────────────────────────────────────────────
@@ -331,7 +326,7 @@ function render() {
 
 // ─── TODAY ───────────────────────────────────────────────────────────────────
 function renderToday() {
-  const phaseIdx = getCurrentPhaseIndex();
+  const phaseIdx = currentPhaseIndex;
   const phase = PROGRAM[phaseIdx];
   const dayData = phase.days[currentDayIndex];
   const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -352,10 +347,10 @@ function renderToday() {
   const streak = calcStreak();
 
   let html = `<div class="page-header">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <div class="phase-badge">Week ${phase.weeks} · ${phase.phase}</div>
+    <h1 style="margin-bottom:10px">${dateStr}</h1>
+    <div style="display:flex;gap:6px">
+      ${PROGRAM.map((p, i) => `<button onclick="setPhase(${i})" style="flex:1;padding:7px 4px;border-radius:8px;border:1px solid ${i===phaseIdx?'var(--gold)':'var(--border)'};background:${i===phaseIdx?'rgba(201,168,76,0.15)':'var(--elevated)'};color:${i===phaseIdx?'var(--gold)':'var(--muted)'};font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.3px">Wk ${p.weeks}<br><span style="font-weight:500;font-size:10px">${p.phase}</span></button>`).join('')}
     </div>
-    <h1>${dateStr}</h1>
   </div>`;
 
   // Install hint (shown if not standalone)
