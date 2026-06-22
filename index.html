@@ -8,10 +8,90 @@
 <meta name="apple-mobile-web-app-title" content="CF Trainer">
 <meta name="theme-color" content="#C9A84C">
 <title>Concorde Fire — Pre-Season</title>
+
+<!-- Firebase via CDN (script tag, no npm needed) -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCbl_I6juuAw72FxVy57pM5X5yUTJb_q9U",
+  authDomain: "concorde-fire-tracker.firebaseapp.com",
+  projectId: "concorde-fire-tracker",
+  storageBucket: "concorde-fire-tracker.firebasestorage.app",
+  messagingSenderId: "187968143452",
+  appId: "1:187968143452:web:95768bd2e7283a68182699"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+
+// ─── FIREBASE API (exposed to window) ────────────────────────────────────────
+window.FB = {
+  // Players
+  async savePLayer(player) {
+    await setDoc(doc(db, 'players', player.id), player);
+  },
+  async deletePlayer(playerId) {
+    await deleteDoc(doc(db, 'players', playerId));
+    // delete all workouts for this player
+    // (Firestore doesn't cascade — we mark deleted)
+    await setDoc(doc(db, 'deleted_players', playerId), { deletedAt: serverTimestamp() });
+  },
+  listenPlayers(callback) {
+    return onSnapshot(collection(db, 'players'), snap => {
+      const players = [];
+      snap.forEach(d => players.push(d.data()));
+      players.sort((a,b) => (a.createdAt||'').localeCompare(b.createdAt||''));
+      callback(players);
+    });
+  },
+
+  // Workouts
+  async saveWorkout(playerId, workoutId, phaseIdx, data) {
+    const key = `${playerId}_${phaseIdx}_${workoutId}`;
+    await setDoc(doc(db, 'workouts', key), { playerId, workoutId, phaseIdx, ...data });
+  },
+  async removeWorkout(playerId, workoutId, phaseIdx) {
+    const key = `${playerId}_${phaseIdx}_${workoutId}`;
+    await deleteDoc(doc(db, 'workouts', key));
+  },
+  listenWorkouts(callback) {
+    return onSnapshot(collection(db, 'workouts'), snap => {
+      const workouts = {};
+      snap.forEach(d => { workouts[d.id] = d.data(); });
+      callback(workouts);
+    });
+  },
+
+  // Weight
+  async logWeight(playerId, lbs) {
+    const key = `${playerId}_${Date.now()}`;
+    await setDoc(doc(db, 'weights', key), { playerId, lbs, date: new Date().toISOString().split('T')[0], ts: Date.now() });
+  },
+  listenWeights(callback) {
+    return onSnapshot(collection(db, 'weights'), snap => {
+      const weights = {};
+      snap.forEach(d => {
+        const data = d.data();
+        if (!weights[data.playerId]) weights[data.playerId] = [];
+        weights[data.playerId].push(data);
+      });
+      Object.keys(weights).forEach(pid => weights[pid].sort((a,b) => b.ts - a.ts));
+      callback(weights);
+    });
+  }
+};
+
+// Signal app that Firebase is ready
+window._fbReady = true;
+window.dispatchEvent(new Event('fb-ready'));
+</script>
+
 <style>
   :root {
     --bg: #0A0A0A; --card: #181818; --elevated: #242424; --border: #2E2E2E;
-    --gold: #C9A84C; --gold-dim: #8A6E2A; --red: #C0392B;
+    --gold: #C9A84C; --red: #C0392B;
     --text: #E8E8E8; --muted: #888888;
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -24,9 +104,21 @@
 
   /* Nav */
   #nav { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(18,18,18,0.96); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--border); display: flex; padding-bottom: var(--safe-bottom); z-index: 100; }
-  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0; border: none; background: none; color: var(--muted); font-size: 10px; font-weight: 500; letter-spacing: 0.5px; cursor: pointer; transition: color 0.2s; }
+  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0; border: none; background: none; color: var(--muted); font-size: 10px; font-weight: 500; cursor: pointer; transition: color 0.2s; }
   .nav-btn.active { color: var(--gold); }
   .nav-btn svg { width: 22px; height: 22px; }
+
+  /* Sync indicator */
+  #sync-dot { position: fixed; top: calc(var(--safe-top) + 10px); right: 16px; width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; z-index: 200; transition: background 0.3s; }
+  #sync-dot.syncing { background: var(--gold); animation: pulse 1s infinite; }
+  #sync-dot.offline { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Loading */
+  #loading { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 500; }
+  #loading .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading p { color: var(--muted); font-size: 14px; }
 
   /* Page header */
   .page-header { padding: calc(var(--safe-top) + 14px) 16px 14px; border-bottom: 1px solid var(--border); }
@@ -40,7 +132,7 @@
   .player-chip.active { border-color: var(--gold); background: rgba(201,168,76,0.12); color: var(--gold); }
   .player-chip .avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--text); flex-shrink: 0; }
   .player-chip.active .avatar { background: var(--gold); color: #0A0A0A; }
-  .add-player-chip { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px dashed var(--border); background: none; color: var(--muted); cursor: pointer; flex-shrink: 0; font-size: 20px; line-height: 1; }
+  .add-player-chip { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px dashed var(--border); background: none; color: var(--muted); cursor: pointer; flex-shrink: 0; font-size: 20px; }
 
   /* Cards */
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; margin: 0 16px 12px; overflow: hidden; }
@@ -77,7 +169,6 @@
   .phase-btn { flex: 1; padding: 8px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--elevated); color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; text-align: center; line-height: 1.4; }
   .phase-btn.active { border-color: var(--gold); background: rgba(201,168,76,0.12); color: var(--gold); }
 
-  /* Section label */
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; padding: 20px 20px 8px; }
 
   /* Modal */
@@ -86,7 +177,7 @@
   .modal { background: var(--card); border-radius: 20px 20px 0 0; border-top: 1px solid var(--border); padding: 0 0 calc(var(--safe-bottom) + 8px); width: 100%; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32,0.72,0,1); max-height: 88vh; overflow-y: auto; }
   .modal-overlay.open .modal { transform: translateY(0); }
   .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 0; }
-  .modal-title { font-size: 18px; font-weight: 700; padding: 16px 20px 6px; }
+  .modal-title { font-size: 18px; font-weight: 700; padding: 16px 20px 4px; }
   .modal-player { font-size: 13px; color: var(--gold); font-weight: 600; padding: 0 20px 10px; }
   .modal-tip { font-size: 14px; color: var(--muted); line-height: 1.6; padding: 0 20px 16px; border-bottom: 1px solid var(--border); }
   .modal-section { padding: 14px 20px; }
@@ -117,28 +208,31 @@
   .streak-banner { margin: 12px 16px 0; background: linear-gradient(135deg, rgba(201,168,76,0.12) 0%, rgba(192,57,43,0.08) 100%); border: 1px solid rgba(201,168,76,0.25); border-radius: 14px; padding: 12px 16px; display: flex; align-items: center; gap: 14px; }
   .streak-num { font-size: 30px; font-weight: 900; color: var(--gold); line-height: 1; }
 
-  /* Empty */
   .empty { text-align: center; padding: 36px 20px; color: var(--muted); font-size: 14px; }
   .empty-icon { font-size: 36px; margin-bottom: 10px; }
 
-  /* No player state */
   .no-player { text-align: center; padding: 60px 24px; }
   .no-player-icon { font-size: 48px; margin-bottom: 16px; }
   .no-player h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
   .no-player p { font-size: 14px; color: var(--muted); line-height: 1.5; margin-bottom: 24px; }
   .btn-add-first { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; background: var(--gold); color: #0A0A0A; border-radius: 12px; font-size: 16px; font-weight: 700; border: none; cursor: pointer; }
 
-  /* Weight history */
   .weight-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-top: 1px solid var(--border); }
   .weight-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .weight-date { font-size: 12px; color: var(--muted); }
-  .weight-change { font-size: 13px; font-weight: 700; }
-  .weight-change.up { color: #e74c3c; }
-  .weight-change.down { color: #2ecc71; }
+  .weight-change.up { color: #e74c3c; font-size:13px; font-weight:700; }
+  .weight-change.down { color: #2ecc71; font-size:13px; font-weight:700; }
 </style>
 </head>
 <body>
-<div id="app">
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Connecting to team data…</p>
+</div>
+
+<div id="app" style="display:none">
+  <div id="sync-dot" title="Synced"></div>
   <div id="content"></div>
   <nav id="nav">
     <button class="nav-btn active" onclick="showTab('today')" id="tab-today">
@@ -162,7 +256,7 @@
 
 <!-- Workout Modal -->
 <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
-  <div class="modal" id="modal">
+  <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-title" id="modal-title"></div>
     <div class="modal-player" id="modal-player"></div>
@@ -196,7 +290,7 @@
       <button class="btn btn-secondary" onclick="closePModal()">Cancel</button>
       <button class="btn btn-primary" onclick="savePlayer()">Save Player</button>
     </div>
-    <div id="pmodal-delete-wrap" style="padding: 0 20px 8px; display:none">
+    <div id="pmodal-delete-wrap" style="padding:0 20px 8px;display:none">
       <button class="btn btn-danger" style="width:100%" onclick="deletePlayer()">Remove Player</button>
     </div>
   </div>
@@ -214,7 +308,7 @@ const PROGRAM = [
       {id:"w1_tue_a", name:"Long Run", tip:"3–5 miles at conversational pace. Aim 20–25 mins. Building aerobic base.", record:"Time (e.g. 24:30)"}
     ]},
     { day:"WEDNESDAY", workouts:[
-      {id:"w1_wed_a", name:"Box Sprints", tip:"20×20yds with 5s rest between reps. Repeat 6 sets with 2 min rest between sets. Speed endurance training.", record:null},
+      {id:"w1_wed_a", name:"Box Sprints", tip:"20×20yds with 5s rest between reps. Repeat 6 sets with 2 min rest between sets.", record:null},
       {id:"w1_wed_b", name:"Upper Body – 5 Rounds", tip:"20 Push Ups, 20 Tricep Dips, 20 Diamond Push Ups, 20 Shoulder Taps, 60s Plank.", record:null}
     ]},
     { day:"THURSDAY", workouts:[
@@ -228,13 +322,13 @@ const PROGRAM = [
       {id:"w1_sat_a", name:"Pick Up Soccer", tip:"Play La Liga or other local game. Work on first touch, positioning, communication.", record:null}
     ]},
     { day:"SUNDAY", workouts:[
-      {id:"w1_sun_a", name:"Push Till You Drop", tip:"8 mins: as many push ups as possible. Pause or stop = 100yd run before continuing. Record total.", record:"Push ups completed"},
+      {id:"w1_sun_a", name:"Push Till You Drop", tip:"8 mins: as many push ups as possible. Pause or stop = 100yd run before continuing.", record:"Push ups completed"},
       {id:"w1_sun_b", name:"Cooper Test", tip:"Run as far as possible in exactly 12 minutes. Elite soccer players: 2800–3200m. This is your baseline.", record:"Distance (e.g. 2600m)"}
     ]},
   ]},
   { phase:"DEVELOPING", weeks:"3–4", days:[
     { day:"MONDAY", workouts:[
-      {id:"w3_mon_a", name:"Pyramids", tip:"10×20yds, 8×40yds, 6×60yds, 4×80yds, 2×100yds. Rest 20s between. Focus on acceleration out of each start.", record:null},
+      {id:"w3_mon_a", name:"Pyramids", tip:"10×20yds, 8×40yds, 6×60yds, 4×80yds, 2×100yds. Rest 20s between. Focus on acceleration.", record:null},
       {id:"w3_mon_b", name:"Full Body – 5 Rounds", tip:"25 reps each: High Knees (×2), Squat Jumps, Mtn Climbers, Burpees + 90s Plank.", record:null}
     ]},
     { day:"TUESDAY", workouts:[
@@ -262,155 +356,151 @@ const PROGRAM = [
   { phase:"PERFORMANCE", weeks:"5–6", days:[
     { day:"MONDAY", workouts:[
       {id:"w5_mon_a", name:"Every Line", tip:"16×6yds, 5×18yds, 4×Half, 3×Opp 18, 2×Opp 6, 1×Full. Uses every line on the field. Rest 20s between.", record:null},
-      {id:"w5_mon_b", name:"Full Body – 5 Rounds", tip:"30 reps: High Knees (×2), Squat Jumps, Mtn Climbers (×2), Burpees + 120s Plank. Hardest week.", record:null}
+      {id:"w5_mon_b", name:"Full Body – 5 Rounds", tip:"30 reps: High Knees (×2), Squat Jumps, Mtn Climbers (×2), Burpees + 120s Plank.", record:null}
     ]},
     { day:"TUESDAY", workouts:[
-      {id:"w5_tue_a", name:"Long Run", tip:"5 miles. Peak long run of the program. Steady effort — don't race it.", record:"Time (e.g. 42:00)"}
+      {id:"w5_tue_a", name:"Long Run", tip:"5 miles. Peak long run. Steady effort — don't race it.", record:"Time (e.g. 42:00)"}
     ]},
     { day:"WEDNESDAY", workouts:[
       {id:"w5_wed_a", name:"Broken 400s", tip:"4×100yds (full field) with 10s rest between reps. Repeat 6 sets with 2 min between.", record:null},
       {id:"w5_wed_b", name:"Upper Body – 5 Rounds", tip:"30 reps: Push Ups, Tricep Dips, Diamond, Shoulder Taps + 120s Plank.", record:null}
     ]},
     { day:"THURSDAY", workouts:[
-      {id:"w5_thu_a", name:"Recovery Run", tip:"Easy 2 miles. Don't skip — flushes lactate, speeds recovery after heavy Wednesday.", record:"Time (e.g. 18:00)"}
+      {id:"w5_thu_a", name:"Recovery Run", tip:"Easy 2 miles. Don't skip — flushes lactate, speeds recovery.", record:"Time (e.g. 18:00)"}
     ]},
     { day:"FRIDAY", workouts:[
       {id:"w5_fri_a", name:"Six Sided Field", tip:"Jog all 6 sides | Sprint 1/Jog 5 | Sprint 2/Jog 4 | up to full sprint. Side lines split at half = 6 sides.", record:null},
-      {id:"w5_fri_b", name:"The Core", tip:"30 reps: Crunches, Knees to Chest, Toe Taps, Flutter Kicks + 100s Plank. Peak core volume.", record:null}
+      {id:"w5_fri_b", name:"The Core", tip:"30 reps: Crunches, Knees to Chest, Toe Taps, Flutter Kicks + 100s Plank.", record:null}
     ]},
     { day:"SATURDAY", workouts:[
-      {id:"w5_sat_a", name:"Pick Up Soccer", tip:"Six weeks in — you should feel significantly fitter than week one. Enjoy it.", record:null}
+      {id:"w5_sat_a", name:"Pick Up Soccer", tip:"Six weeks in — you should feel significantly fitter than week one.", record:null}
     ]},
     { day:"SUNDAY", workouts:[
-      {id:"w5_sun_a", name:"Death By Burpees", tip:"Each minute: run 100m + burpees. Min 1=1 burpee, Min 2=2 burpees, +1 per min until you can't finish. Record max.", record:"Max rounds completed"},
-      {id:"w5_sun_b", name:"Cooper Test", tip:"Final Cooper Test. Compare all 3 scores — improvement means you're season-ready.", record:"Distance (e.g. 2900m)"}
+      {id:"w5_sun_a", name:"Death By Burpees", tip:"Each minute: run 100m + burpees. Min 1=1, Min 2=2, +1 per min until you can't finish. Record max.", record:"Max rounds completed"},
+      {id:"w5_sun_b", name:"Cooper Test", tip:"Final Cooper Test. Compare all 3 scores — improvement = season-ready.", record:"Distance (e.g. 2900m)"}
     ]},
   ]}
 ];
 
-// ─── PLAYERS ──────────────────────────────────────────────────────────────────
-function getPlayers() {
-  try { return JSON.parse(localStorage.getItem('cf_players') || '[]'); } catch { return []; }
-}
-function savePlayers(players) { localStorage.setItem('cf_players', JSON.stringify(players)); }
-function getActivePlayerId() { return localStorage.getItem('cf_active_player') || null; }
-function setActivePlayerId(id) { localStorage.setItem('cf_active_player', id); }
-function getActivePlayer() {
-  const id = getActivePlayerId();
-  return getPlayers().find(p => p.id === id) || null;
-}
-
-// ─── WORKOUT STORAGE (per player) ────────────────────────────────────────────
-function workoutKey(playerId, workoutId, phaseIdx) { return `cf_p${playerId}_${phaseIdx}_${workoutId}`; }
-function saveEntry(playerId, workoutId, phaseIdx, data) {
-  localStorage.setItem(workoutKey(playerId, workoutId, phaseIdx), JSON.stringify(data));
-}
-function getEntry(playerId, workoutId, phaseIdx) {
-  try { return JSON.parse(localStorage.getItem(workoutKey(playerId, workoutId, phaseIdx))); } catch { return null; }
-}
-function removeEntry(playerId, workoutId, phaseIdx) {
-  localStorage.removeItem(workoutKey(playerId, workoutId, phaseIdx));
-}
-function getAllEntriesForPlayer(playerId) {
-  const all = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(`cf_p${playerId}_`)) {
-      try { all.push({ key: k, data: JSON.parse(localStorage.getItem(k)) }); } catch {}
-    }
-  }
-  return all;
-}
-
-// ─── WEIGHT STORAGE ───────────────────────────────────────────────────────────
-function weightKey(playerId) { return `cf_weight_${playerId}`; }
-function getWeightLog(playerId) {
-  try { return JSON.parse(localStorage.getItem(weightKey(playerId)) || '[]'); } catch { return []; }
-}
-function addWeightEntry(playerId, lbs) {
-  const log = getWeightLog(playerId);
-  log.unshift({ lbs, date: new Date().toISOString().split('T')[0], ts: Date.now() });
-  localStorage.setItem(weightKey(playerId), JSON.stringify(log));
-}
-
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let currentTab = 'today';
-let currentDayIndex = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1; })();
-let currentPhaseIndex = parseInt(localStorage.getItem('cf_phase') || '0');
+let currentDayIndex = (() => { const d = new Date().getDay(); return d===0?6:d-1; })();
+let currentPhaseIndex = parseInt(localStorage.getItem('cf_phase')||'0');
+let activePlayerId = localStorage.getItem('cf_active_player') || null;
 let modalWorkout = null; let modalPhaseIdx = null;
 let editingPlayerId = null;
+
+// Cloud data (updated by Firestore listeners)
+let cloudPlayers = [];
+let cloudWorkouts = {};
+let cloudWeights = {};
+let isSyncing = false;
+
+function setSyncing(v) {
+  isSyncing = v;
+  const dot = document.getElementById('sync-dot');
+  if (dot) dot.className = v ? 'syncing' : '';
+}
+
+// ─── INIT — wait for Firebase ─────────────────────────────────────────────────
+function initApp() {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+
+  // Start Firestore listeners — real-time sync
+  window.FB.listenPlayers(players => {
+    cloudPlayers = players;
+    // Auto-select first player if none selected
+    if (!activePlayerId && players.length > 0) {
+      activePlayerId = players[0].id;
+      localStorage.setItem('cf_active_player', activePlayerId);
+    }
+    render();
+  });
+  window.FB.listenWorkouts(workouts => {
+    cloudWorkouts = workouts;
+    render();
+  });
+  window.FB.listenWeights(weights => {
+    cloudWeights = weights;
+    render();
+  });
+}
+
+if (window._fbReady) {
+  initApp();
+} else {
+  window.addEventListener('fb-ready', initApp);
+  // Timeout fallback
+  setTimeout(() => {
+    if (!window._fbReady) {
+      document.getElementById('loading').querySelector('p').textContent = 'Could not connect. Check your internet connection.';
+      document.getElementById('sync-dot') && (document.getElementById('sync-dot').className = 'offline');
+    }
+  }, 10000);
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function getActivePlayer() { return cloudPlayers.find(p=>p.id===activePlayerId)||null; }
+function getEntry(playerId, workoutId, phaseIdx) {
+  return cloudWorkouts[`${playerId}_${phaseIdx}_${workoutId}`] || null;
+}
+function getWeightLog(playerId) { return cloudWeights[playerId] || []; }
 
 // ─── TABS ─────────────────────────────────────────────────────────────────────
 function showTab(tab) {
   currentTab = tab;
-  ['today','program','progress','team'].forEach(t => {
-    document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
-  });
+  ['today','program','progress','team'].forEach(t => document.getElementById(`tab-${t}`).classList.toggle('active', t===tab));
   render();
 }
 function render() {
   const el = document.getElementById('content');
-  if (currentTab === 'today') el.innerHTML = renderPlayerBar() + renderToday();
-  else if (currentTab === 'program') el.innerHTML = renderPlayerBar() + renderProgram();
-  else if (currentTab === 'progress') { el.innerHTML = renderPlayerBar() + renderProgress(); drawCharts(); }
+  if (!el) return;
+  if (currentTab==='today') el.innerHTML = renderPlayerBar() + renderToday();
+  else if (currentTab==='program') el.innerHTML = renderPlayerBar() + renderProgram();
+  else if (currentTab==='progress') { el.innerHTML = renderPlayerBar() + renderProgress(); drawCharts(); }
   else el.innerHTML = renderTeam();
 }
 
 // ─── PLAYER BAR ───────────────────────────────────────────────────────────────
 function renderPlayerBar() {
-  const players = getPlayers();
-  const activeId = getActivePlayerId();
-  if (players.length === 0) return '';
+  if (cloudPlayers.length === 0) return '';
   let html = `<div id="player-bar">`;
-  players.forEach(p => {
+  cloudPlayers.forEach(p => {
     const initials = p.name.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2);
-    const isActive = p.id === activeId;
-    html += `<div class="player-chip${isActive?' active':''}" onclick="selectPlayer('${p.id}')">
-      <div class="avatar">${initials}</div>
-      ${p.name.split(' ')[0]}
+    html += `<div class="player-chip${p.id===activePlayerId?' active':''}" onclick="selectPlayer('${p.id}')">
+      <div class="avatar">${initials}</div>${p.name.split(' ')[0]}
     </div>`;
   });
-  html += `<button class="add-player-chip" onclick="openPModal()" title="Add player">+</button>`;
-  html += `</div>`;
+  html += `<button class="add-player-chip" onclick="openPModal()">+</button></div>`;
   return html;
 }
-
-function selectPlayer(id) {
-  setActivePlayerId(id);
-  render();
-}
+function selectPlayer(id) { activePlayerId=id; localStorage.setItem('cf_active_player',id); render(); }
 
 // ─── TODAY ────────────────────────────────────────────────────────────────────
 function renderToday() {
   const player = getActivePlayer();
   if (!player) return renderNoPlayer();
-
   const phase = PROGRAM[currentPhaseIndex];
   const dayData = phase.days[currentDayIndex];
   const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-
-  const done = dayData.workouts.filter(w => { const e = getEntry(player.id, w.id, currentPhaseIndex); return e && e.completed; }).length;
+  const dateStr = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  const done = dayData.workouts.filter(w=>{ const e=getEntry(player.id,w.id,currentPhaseIndex); return e&&e.completed; }).length;
   const total = dayData.workouts.length;
-  const pct = total > 0 ? Math.round((done/total)*100) : 0;
-  const circ = 2 * Math.PI * 28;
-  const offset = circ - (circ * pct / 100);
+  const pct = total>0?Math.round((done/total)*100):0;
+  const circ = 2*Math.PI*28;
+  const offset = circ-(circ*pct/100);
   const streak = calcStreak(player.id);
 
-  let html = `<div class="page-header"><h1>${dateStr}</h1></div>`;
-
-  // Phase selector
-  html += `<div class="phase-selector">
-    ${PROGRAM.map((p,i) => `<button class="phase-btn${i===currentPhaseIndex?' active':''}" onclick="setPhase(${i})">Wk ${p.weeks}<br><span style="font-weight:500;font-size:10px">${p.phase}</span></button>`).join('')}
+  let html = `<div class="page-header"><h1>${dateStr}</h1></div>
+  <div class="phase-selector">
+    ${PROGRAM.map((p,i)=>`<button class="phase-btn${i===currentPhaseIndex?' active':''}" onclick="setPhase(${i})">Wk ${p.weeks}<br><span style="font-weight:500;font-size:10px">${p.phase}</span></button>`).join('')}
   </div>`;
 
-  if (streak > 0) {
-    html += `<div class="streak-banner">
-      <div class="streak-num">${streak}</div>
-      <div><div style="font-size:13px;font-weight:600">Day${streak!==1?'s':''} with workouts logged</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Keep it going 🔥</div></div>
-    </div>`;
-  }
+  if (streak>0) html += `<div class="streak-banner">
+    <div class="streak-num">${streak}</div>
+    <div><div style="font-size:13px;font-weight:600">Day${streak!==1?'s':''} with workouts logged</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Keep it going 🔥</div></div>
+  </div>`;
 
   html += `<div class="day-nav">
     <button class="day-nav-btn" onclick="navDay(-1)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg></button>
@@ -426,16 +516,13 @@ function renderToday() {
       <div class="day-nav-date">${done}/${total} done</div>
     </div>
     <button class="day-nav-btn" onclick="navDay(1)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></button>
-  </div>`;
-
-  html += `<div class="card">`;
+  </div>
+  <div class="card">`;
   dayData.workouts.forEach(w => {
     const entry = getEntry(player.id, w.id, currentPhaseIndex);
     const isDone = entry && entry.completed;
     html += `<div class="workout-row" onclick="openModal('${w.id}',${currentPhaseIndex})">
-      <div class="check-circle${isDone?' done':''}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
+      <div class="check-circle${isDone?' done':''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
       <div class="workout-info">
         <div class="workout-name${isDone?' done':''}">${w.name}</div>
         <div class="workout-tip">${w.tip.substring(0,85)}${w.tip.length>85?'…':''}</div>
@@ -449,27 +536,17 @@ function renderToday() {
 }
 
 function renderNoPlayer() {
-  return `<div class="no-player">
-    <div class="no-player-icon">⚽</div>
-    <h2>No Players Yet</h2>
-    <p>Add players to start tracking workouts and progress for your team.</p>
-    <button class="btn-add-first" onclick="openPModal()">+ Add First Player</button>
-  </div>`;
+  return `<div class="no-player"><div class="no-player-icon">⚽</div><h2>No Players Yet</h2><p>Add players to start tracking workouts for your team.</p><button class="btn-add-first" onclick="openPModal()">+ Add First Player</button></div>`;
 }
-
-function setPhase(idx) { currentPhaseIndex = idx; localStorage.setItem('cf_phase', idx); render(); }
-function navDay(dir) { currentDayIndex = (currentDayIndex + 7 + dir) % 7; render(); }
-
+function setPhase(i) { currentPhaseIndex=i; localStorage.setItem('cf_phase',i); render(); }
+function navDay(dir) { currentDayIndex=(currentDayIndex+7+dir)%7; render(); }
 function calcStreak(playerId) {
-  const entries = getAllEntriesForPlayer(playerId);
-  const doneDays = new Set(entries.filter(e=>e.data&&e.data.completed&&e.data.date).map(e=>e.data.date));
-  let streak = 0;
-  const today = new Date(); today.setHours(0,0,0,0);
-  for (let i = 0; i < 60; i++) {
-    const d = new Date(today); d.setDate(d.getDate()-i);
-    const ds = d.toISOString().split('T')[0];
-    if (doneDays.has(ds)) streak++;
-    else if (i > 0) break;
+  const doneDays = new Set(Object.values(cloudWorkouts).filter(e=>e.playerId===playerId&&e.completed&&e.date).map(e=>e.date));
+  let streak=0; const today=new Date(); today.setHours(0,0,0,0);
+  for (let i=0;i<60;i++) {
+    const d=new Date(today); d.setDate(d.getDate()-i);
+    const ds=d.toISOString().split('T')[0];
+    if (doneDays.has(ds)) streak++; else if (i>0) break;
   }
   return streak;
 }
@@ -479,18 +556,17 @@ function renderProgram() {
   const player = getActivePlayer();
   if (!player) return renderNoPlayer();
   let html = `<div class="page-header"><h1>Full Program</h1><div class="sub">6-Week Pre-Season Plan</div></div>`;
-  PROGRAM.forEach((phase, pi) => {
+  PROGRAM.forEach((phase,pi) => {
     html += `<div class="section-label">Week ${phase.weeks} — ${phase.phase}</div>`;
     phase.days.forEach(dayData => {
       const done = dayData.workouts.filter(w=>{ const e=getEntry(player.id,w.id,pi); return e&&e.completed; }).length;
-      const total = dayData.workouts.length;
-      const dots = dayData.workouts.map(w=>{ const e=getEntry(player.id,w.id,pi); return `<div class="prog-dot${e&&e.completed?' done':''}" style="width:8px;height:8px;border-radius:50%;background:${e&&e.completed?'var(--gold)':'var(--border)'}"></div>`; }).join('');
+      const dots = dayData.workouts.map(w=>{ const e=getEntry(player.id,w.id,pi); return `<div style="width:8px;height:8px;border-radius:50%;background:${e&&e.completed?'var(--gold)':'var(--border)'}"></div>`; }).join('');
       html += `<div class="card" style="margin-bottom:2px;border-radius:10px" onclick="openDayDetail(${pi},'${dayData.day}')">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">
-          <div><div style="font-size:15px;font-weight:700">${dayData.day}</div></div>
+          <div style="font-size:15px;font-weight:700">${dayData.day}</div>
           <div style="display:flex;align-items:center;gap:10px">
             <div style="display:flex;gap:4px">${dots}</div>
-            <div style="font-size:12px;color:${done===total?'var(--gold)':'var(--muted)'};font-weight:600">${done}/${total}</div>
+            <div style="font-size:12px;color:${done===dayData.workouts.length?'var(--gold)':'var(--muted)'};font-weight:600">${done}/${dayData.workouts.length}</div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--border)" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
         </div>
@@ -503,21 +579,18 @@ function renderProgram() {
 
 function openDayDetail(phaseIdx, dayName) {
   const player = getActivePlayer();
-  const phase = PROGRAM[phaseIdx];
-  const dayData = phase.days.find(d=>d.day===dayName);
-  if (!dayData || !player) return;
+  const dayData = PROGRAM[phaseIdx].days.find(d=>d.day===dayName);
+  if (!dayData||!player) return;
   const el = document.getElementById('content');
   let html = `<div class="page-header" style="display:flex;align-items:center;gap:12px">
-    <button onclick="render()" style="background:none;border:none;color:var(--gold);font-size:15px;font-weight:600;padding:0;cursor:pointer;white-space:nowrap">← Back</button>
-    <div><h1 style="font-size:18px">${dayData.day}</h1><div class="sub">Week ${phase.weeks} · ${phase.phase}</div></div>
+    <button onclick="render()" style="background:none;border:none;color:var(--gold);font-size:15px;font-weight:600;padding:0;cursor:pointer">← Back</button>
+    <div><h1 style="font-size:18px">${dayData.day}</h1><div class="sub">Week ${PROGRAM[phaseIdx].weeks} · ${PROGRAM[phaseIdx].phase}</div></div>
   </div><div class="card">`;
   dayData.workouts.forEach(w => {
     const entry = getEntry(player.id, w.id, phaseIdx);
     const isDone = entry && entry.completed;
     html += `<div class="workout-row" onclick="openModal('${w.id}',${phaseIdx})">
-      <div class="check-circle${isDone?' done':''}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
+      <div class="check-circle${isDone?' done':''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
       <div class="workout-info">
         <div class="workout-name${isDone?' done':''}">${w.name}</div>
         <div class="workout-tip">${w.tip}</div>
@@ -535,13 +608,11 @@ function renderProgress() {
   const player = getActivePlayer();
   if (!player) return renderNoPlayer();
   const weightLog = getWeightLog(player.id);
-  const totalDone = getAllEntriesForPlayer(player.id).filter(e=>e.data&&e.data.completed).length;
+  const totalDone = Object.values(cloudWorkouts).filter(e=>e.playerId===player.id&&e.completed).length;
   const totalWorkouts = PROGRAM.reduce((s,p)=>s+p.days.reduce((sd,d)=>sd+d.workouts.length,0),0);
 
-  let html = `<div class="page-header"><h1>Progress</h1><div class="sub">${player.name}</div></div>`;
-
-  // Stats row
-  html += `<div style="display:flex;gap:8px;padding:16px 16px 0">
+  let html = `<div class="page-header"><h1>Progress</h1><div class="sub">${player.name}</div></div>
+  <div style="display:flex;gap:8px;padding:16px 16px 0">
     <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
       <div style="font-size:26px;font-weight:900;color:var(--gold)">${totalDone}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px">Done</div>
@@ -556,7 +627,6 @@ function renderProgress() {
     </div>
   </div>`;
 
-  // Cooper chart
   html += `<div class="section-label">Cooper Test (12-Min Run)</div>
   <div class="chart-wrap"><div class="chart-canvas-wrap">
     <div class="chart-title">Distance Over Time</div>
@@ -564,31 +634,26 @@ function renderProgress() {
     <canvas id="chart-cooper" height="150"></canvas>
   </div></div>`;
 
-  // Weight log
-  html += `<div class="section-label">Weight Log</div>`;
-  html += `<div class="card">
+  html += `<div class="section-label">Weight Log</div><div class="card">
     <div style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
       <div style="font-size:14px;font-weight:600">Log today's weight</div>
       <div style="display:flex;gap:8px;align-items:center">
-        <input id="weight-input" type="number" placeholder="lbs" style="width:80px;background:var(--elevated);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:15px;outline:none">
+        <input id="weight-input" type="number" placeholder="lbs" style="width:76px;background:var(--elevated);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:15px;outline:none">
         <button onclick="logWeight()" style="background:var(--gold);color:#0A0A0A;border:none;border-radius:8px;padding:8px 14px;font-weight:700;font-size:14px;cursor:pointer">Log</button>
       </div>
     </div>
-    ${weightLog.length > 0 ? weightLog.slice(0,8).map((entry, i) => {
-      const prev = weightLog[i+1];
-      const diff = prev ? (entry.lbs - prev.lbs) : null;
-      const changeHtml = diff !== null ? `<span class="weight-change ${diff>0?'up':'down'}">${diff>0?'+':''}${diff.toFixed(1)} lb</span>` : '';
+    ${weightLog.length>0 ? weightLog.slice(0,8).map((entry,i)=>{
+      const prev=weightLog[i+1]; const diff=prev?(entry.lbs-prev.lbs):null;
       return `<div class="weight-row">
         <span class="weight-val">${entry.lbs} lb</span>
         <span class="weight-date">${entry.date}</span>
-        ${changeHtml}
+        ${diff!==null?`<span class="weight-change ${diff>0?'up':'down'}">${diff>0?'+':''}${diff.toFixed(1)} lb</span>`:''}
       </div>`;
     }).join('') : '<div style="padding:14px 16px;color:var(--muted);font-size:13px">No weight entries yet</div>'}
   </div>`;
 
-  // All scores
-  html += `<div class="section-label">All Recorded Scores</div>`;
   let hasAny = false;
+  let scoresHtml = '';
   PROGRAM.forEach((phase,pi) => {
     phase.days.forEach(dayData => {
       dayData.workouts.forEach(w => {
@@ -596,7 +661,7 @@ function renderProgress() {
         const e = getEntry(player.id, w.id, pi);
         if (!e||!e.completed) return;
         hasAny = true;
-        html += `<div class="card"><div style="padding:14px 16px">
+        scoresHtml += `<div class="card"><div style="padding:14px 16px">
           <div style="font-size:11px;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Week ${phase.weeks} · ${dayData.day}</div>
           <div style="font-size:15px;font-weight:700">${w.name}</div>
           ${e.score?`<div style="font-size:22px;font-weight:900;color:var(--gold);margin-top:8px">${e.score}</div>`:''}
@@ -605,45 +670,42 @@ function renderProgress() {
       });
     });
   });
-  if (!hasAny) html += `<div class="empty"><div class="empty-icon">🏆</div>Scores you record will appear here</div>`;
+  html += `<div class="section-label">All Recorded Scores</div>`;
+  html += hasAny ? scoresHtml : `<div class="empty"><div class="empty-icon">🏆</div>Scores you record will appear here</div>`;
   html += `<div style="height:20px"></div>`;
   return html;
 }
 
-function logWeight() {
+async function logWeight() {
   const player = getActivePlayer();
   if (!player) return;
   const val = parseFloat(document.getElementById('weight-input').value);
-  if (!val || val < 50 || val > 400) return;
-  addWeightEntry(player.id, val);
-  render();
+  if (!val||val<50||val>400) return;
+  setSyncing(true);
+  await window.FB.logWeight(player.id, val);
+  setSyncing(false);
 }
 
-// ─── TEAM TAB ─────────────────────────────────────────────────────────────────
+// ─── TEAM ─────────────────────────────────────────────────────────────────────
 function renderTeam() {
-  const players = getPlayers();
-  let html = `<div class="page-header"><h1>Team</h1><div class="sub">${players.length} player${players.length!==1?'s':''}</div></div>`;
-
-  if (players.length === 0) {
-    html += `<div class="no-player"><div class="no-player-icon">👥</div><h2>No Players Yet</h2><p>Add players to track their workouts and progress individually.</p><button class="btn-add-first" onclick="openPModal()">+ Add First Player</button></div>`;
-    return html;
+  let html = `<div class="page-header"><h1>Team</h1><div class="sub">${cloudPlayers.length} player${cloudPlayers.length!==1?'s':''} · live sync 🟢</div></div>`;
+  if (cloudPlayers.length===0) {
+    return html + `<div class="no-player"><div class="no-player-icon">👥</div><h2>No Players Yet</h2><p>Add players to track their workouts individually.</p><button class="btn-add-first" onclick="openPModal()">+ Add First Player</button></div>`;
   }
-
-  players.forEach(p => {
-    const totalDone = getAllEntriesForPlayer(p.id).filter(e=>e.data&&e.data.completed).length;
+  cloudPlayers.forEach(p => {
+    const totalDone = Object.values(cloudWorkouts).filter(e=>e.playerId===p.id&&e.completed).length;
     const totalWorkouts = PROGRAM.reduce((s,ph)=>s+ph.days.reduce((sd,d)=>sd+d.workouts.length,0),0);
-    const pct = totalWorkouts > 0 ? Math.round(totalDone/totalWorkouts*100) : 0;
+    const pct = totalWorkouts>0?Math.round(totalDone/totalWorkouts*100):0;
     const streak = calcStreak(p.id);
     const initials = p.name.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2);
-    const weightLog = getWeightLog(p.id);
-    const currentWeight = weightLog.length > 0 ? weightLog[0].lbs + ' lb' : (p.weight ? p.weight + ' lb' : '—');
-
+    const wLog = getWeightLog(p.id);
+    const wt = wLog.length>0 ? wLog[0].lbs+'lb' : (p.weight?p.weight+'lb':'—');
     html += `<div class="card" onclick="openPModal('${p.id}')">
       <div style="padding:16px;display:flex;align-items:center;gap:14px">
         <div style="width:46px;height:46px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#0A0A0A;flex-shrink:0">${initials}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:16px;font-weight:700">${p.name}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">${currentWeight} · ${streak} day streak · ${pct}% complete</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${wt} · ${streak} day streak · ${pct}% done</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-size:18px;font-weight:900;color:var(--gold)">${totalDone}</div>
@@ -651,214 +713,146 @@ function renderTeam() {
         </div>
       </div>
       <div style="margin:0 16px 14px;background:var(--elevated);border-radius:4px;height:4px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:4px;transition:width 0.5s ease"></div>
+        <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:4px"></div>
       </div>
     </div>`;
   });
-
-  html += `<div style="padding:16px">
-    <button onclick="openPModal()" style="width:100%;padding:14px;background:var(--card);border:1px dashed var(--border);border-radius:12px;color:var(--muted);font-size:15px;font-weight:600;cursor:pointer">+ Add Player</button>
-  </div>`;
+  html += `<div style="padding:16px"><button onclick="openPModal()" style="width:100%;padding:14px;background:var(--card);border:1px dashed var(--border);border-radius:12px;color:var(--muted);font-size:15px;font-weight:600;cursor:pointer">+ Add Player</button></div>`;
   return html;
 }
 
-// ─── MODAL (workout) ──────────────────────────────────────────────────────────
+// ─── WORKOUT MODAL ────────────────────────────────────────────────────────────
 function openModal(workoutId, phaseIdx) {
   const player = getActivePlayer();
   if (!player) return;
   let workout = null;
-  PROGRAM[phaseIdx].days.forEach(d => d.workouts.forEach(w => { if (w.id===workoutId) workout=w; }));
+  PROGRAM[phaseIdx].days.forEach(d=>d.workouts.forEach(w=>{ if(w.id===workoutId) workout=w; }));
   if (!workout) return;
-  modalWorkout = workout; modalPhaseIdx = phaseIdx;
-
-  const entry = getEntry(player.id, workoutId, phaseIdx) || {};
+  modalWorkout=workout; modalPhaseIdx=phaseIdx;
+  const entry = getEntry(player.id, workoutId, phaseIdx)||{};
   document.getElementById('modal-title').textContent = workout.name;
   document.getElementById('modal-player').textContent = player.name;
   document.getElementById('modal-tip').textContent = workout.tip;
-
-  const scoreSection = document.getElementById('modal-score-section');
-  if (workout.record) {
-    scoreSection.style.display = 'block';
-    document.getElementById('modal-score-label').textContent = workout.record;
-    document.getElementById('modal-score-input').value = entry.score || '';
-  } else {
-    scoreSection.style.display = 'none';
-  }
-  document.getElementById('modal-notes-input').value = entry.notes || '';
-
-  const isDone = entry && entry.completed;
-  const actions = document.getElementById('modal-actions');
-  if (isDone) {
-    actions.innerHTML = `
-      <button class="btn btn-danger" onclick="unmarkWorkout()">Mark Incomplete</button>
-      <button class="btn btn-primary" onclick="saveWorkout()">Update</button>`;
-  } else {
-    actions.innerHTML = `
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveWorkout()">Mark Complete</button>`;
-  }
-
+  const ss = document.getElementById('modal-score-section');
+  if (workout.record) { ss.style.display='block'; document.getElementById('modal-score-label').textContent=workout.record; document.getElementById('modal-score-input').value=entry.score||''; }
+  else ss.style.display='none';
+  document.getElementById('modal-notes-input').value = entry.notes||'';
+  const isDone = entry&&entry.completed;
+  document.getElementById('modal-actions').innerHTML = isDone
+    ? `<button class="btn btn-danger" onclick="unmarkWorkout()">Mark Incomplete</button><button class="btn btn-primary" onclick="saveWorkout()">Update</button>`
+    : `<button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveWorkout()">Mark Complete</button>`;
   document.getElementById('modal-overlay').classList.add('open');
 }
-
 function closeModal(e) {
-  if (e && e.target !== document.getElementById('modal-overlay')) return;
+  if (e&&e.target!==document.getElementById('modal-overlay')) return;
   document.getElementById('modal-overlay').classList.remove('open');
-  modalWorkout = null;
 }
-
-function saveWorkout() {
+async function saveWorkout() {
   const player = getActivePlayer();
-  if (!modalWorkout || !player) return;
+  if (!modalWorkout||!player) return;
   const score = document.getElementById('modal-score-input').value.trim();
   const notes = document.getElementById('modal-notes-input').value.trim();
-  const today = new Date().toISOString().split('T')[0];
-  saveEntry(player.id, modalWorkout.id, modalPhaseIdx, { completed: true, score, notes, date: today });
   document.getElementById('modal-overlay').classList.remove('open');
-  modalWorkout = null;
-  render();
+  setSyncing(true);
+  await window.FB.saveWorkout(player.id, modalWorkout.id, modalPhaseIdx, { completed:true, score, notes, date:new Date().toISOString().split('T')[0] });
+  setSyncing(false);
+  modalWorkout=null;
 }
-
-function unmarkWorkout() {
+async function unmarkWorkout() {
   const player = getActivePlayer();
-  if (!modalWorkout || !player) return;
-  removeEntry(player.id, modalWorkout.id, modalPhaseIdx);
+  if (!modalWorkout||!player) return;
   document.getElementById('modal-overlay').classList.remove('open');
-  modalWorkout = null;
-  render();
+  setSyncing(true);
+  await window.FB.removeWorkout(player.id, modalWorkout.id, modalPhaseIdx);
+  setSyncing(false);
+  modalWorkout=null;
 }
 
 // ─── PLAYER MODAL ─────────────────────────────────────────────────────────────
 function openPModal(playerId) {
-  editingPlayerId = playerId || null;
-  const players = getPlayers();
-  const player = playerId ? players.find(p=>p.id===playerId) : null;
-  document.getElementById('pmodal-title').textContent = player ? 'Edit Player' : 'Add Player';
-  document.getElementById('pmodal-name').value = player ? player.name : '';
-  document.getElementById('pmodal-weight').value = player ? (player.weight || '') : '';
-  document.getElementById('pmodal-delete-wrap').style.display = player ? 'block' : 'none';
+  editingPlayerId = playerId||null;
+  const player = playerId ? cloudPlayers.find(p=>p.id===playerId) : null;
+  document.getElementById('pmodal-title').textContent = player?'Edit Player':'Add Player';
+  document.getElementById('pmodal-name').value = player?player.name:'';
+  document.getElementById('pmodal-weight').value = player?(player.weight||''):'';  
+  document.getElementById('pmodal-delete-wrap').style.display = player?'block':'none';
   document.getElementById('pmodal-overlay').classList.add('open');
-  setTimeout(() => document.getElementById('pmodal-name').focus(), 350);
+  setTimeout(()=>document.getElementById('pmodal-name').focus(),350);
 }
-
 function closePModal(e) {
-  if (e && e.target !== document.getElementById('pmodal-overlay')) return;
+  if (e&&e.target!==document.getElementById('pmodal-overlay')) return;
   document.getElementById('pmodal-overlay').classList.remove('open');
-  editingPlayerId = null;
+  editingPlayerId=null;
 }
-
-function savePlayer() {
+async function savePlayer() {
   const name = document.getElementById('pmodal-name').value.trim();
-  const weight = parseFloat(document.getElementById('pmodal-weight').value) || null;
+  const weight = parseFloat(document.getElementById('pmodal-weight').value)||null;
   if (!name) return;
-  const players = getPlayers();
+  document.getElementById('pmodal-overlay').classList.remove('open');
+  setSyncing(true);
   if (editingPlayerId) {
-    const idx = players.findIndex(p=>p.id===editingPlayerId);
-    if (idx >= 0) { players[idx].name = name; players[idx].weight = weight; }
+    const existing = cloudPlayers.find(p=>p.id===editingPlayerId)||{};
+    await window.FB.savePLayer({ ...existing, name, weight });
   } else {
-    const id = 'p' + Date.now();
-    players.push({ id, name, weight, createdAt: new Date().toISOString() });
-    setActivePlayerId(id);
-    if (weight) addWeightEntry(id, weight);
+    const id = 'p'+Date.now();
+    await window.FB.savePLayer({ id, name, weight, createdAt: new Date().toISOString() });
+    if (weight) await window.FB.logWeight(id, weight);
+    activePlayerId=id; localStorage.setItem('cf_active_player',id);
   }
-  savePlayers(players);
-  document.getElementById('pmodal-overlay').classList.remove('open');
-  editingPlayerId = null;
-  render();
+  setSyncing(false);
+  editingPlayerId=null;
 }
-
-function deletePlayer() {
+async function deletePlayer() {
   if (!editingPlayerId) return;
-  if (!confirm('Remove this player? Their workout data will be deleted.')) return;
-  let players = getPlayers();
-  players = players.filter(p=>p.id!==editingPlayerId);
-  savePlayers(players);
-  // Clear their data
-  const toRemove = [];
-  for (let i=0; i<localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && (k.startsWith(`cf_p${editingPlayerId}_`) || k === weightKey(editingPlayerId))) toRemove.push(k);
-  }
-  toRemove.forEach(k => localStorage.removeItem(k));
-  if (getActivePlayerId() === editingPlayerId) setActivePlayerId(players[0]?.id || null);
+  if (!confirm('Remove this player and all their data?')) return;
   document.getElementById('pmodal-overlay').classList.remove('open');
-  editingPlayerId = null;
-  render();
+  setSyncing(true);
+  await window.FB.deletePlayer(editingPlayerId);
+  if (activePlayerId===editingPlayerId) { activePlayerId=cloudPlayers.find(p=>p.id!==editingPlayerId)?.id||null; localStorage.setItem('cf_active_player',activePlayerId||''); }
+  setSyncing(false);
+  editingPlayerId=null;
 }
 
 // ─── CHARTS ───────────────────────────────────────────────────────────────────
 function drawCharts() {
   const player = getActivePlayer();
   if (!player) return;
-  const cooperData = [
-    {label:'Wk 1–2', id:'w1_sun_b', pi:0},
-    {label:'Wk 3–4', id:'w3_sun_b', pi:1},
-    {label:'Wk 5–6', id:'w5_sun_b', pi:2},
-  ];
-  const vals = cooperData.map(d => {
-    const e = getEntry(player.id, d.id, d.pi);
-    if (!e||!e.score) return null;
-    const m = e.score.match(/\d+/); return m ? parseInt(m[0]) : null;
-  });
+  const cooperData = [{label:'Wk 1–2',id:'w1_sun_b',pi:0},{label:'Wk 3–4',id:'w3_sun_b',pi:1},{label:'Wk 5–6',id:'w5_sun_b',pi:2}];
+  const vals = cooperData.map(d=>{ const e=getEntry(player.id,d.id,d.pi); if(!e||!e.score) return null; const m=e.score.match(/\d+/); return m?parseInt(m[0]):null; });
   drawLineChart('chart-cooper', cooperData.map(d=>d.label), vals, '#C9A84C', 2000, 3500);
 }
-
 function drawLineChart(canvasId, labels, values, color, minY, maxY) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const dpr = window.devicePixelRatio || 1;
-  const W = canvas.offsetWidth || 300; const H = 150;
-  canvas.width = W*dpr; canvas.height = H*dpr;
-  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
-  const pad = {top:16,right:20,bottom:30,left:48};
-  const cW = W-pad.left-pad.right; const cH = H-pad.top-pad.bottom;
+  const dpr=window.devicePixelRatio||1; const W=canvas.offsetWidth||300; const H=150;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  const pad={top:16,right:20,bottom:30,left:48}; const cW=W-pad.left-pad.right; const cH=H-pad.top-pad.bottom;
   ctx.clearRect(0,0,W,H);
-  const validVals = values.filter(v=>v!==null);
-  const yMin = validVals.length ? Math.min(minY, Math.min(...validVals)*0.97) : minY;
-  const yMax = validVals.length ? Math.max(maxY, Math.max(...validVals)*1.03) : maxY;
-  const xPos = i => pad.left + (i/(labels.length-1))*cW;
-  const yPos = v => pad.top + cH - ((v-yMin)/(yMax-yMin))*cH;
-  // Grid
+  const valid=values.filter(v=>v!==null);
+  const yMin=valid.length?Math.min(minY,Math.min(...valid)*0.97):minY;
+  const yMax=valid.length?Math.max(maxY,Math.max(...valid)*1.03):maxY;
+  const xPos=i=>pad.left+(i/(labels.length-1))*cW;
+  const yPos=v=>pad.top+cH-((v-yMin)/(yMax-yMin))*cH;
   ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
-  for (let i=0;i<=4;i++) { const y=pad.top+(cH/4)*i; ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(pad.left+cW,y); ctx.stroke(); }
-  // Y labels
+  for(let i=0;i<=4;i++){const y=pad.top+(cH/4)*i;ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(pad.left+cW,y);ctx.stroke();}
   ctx.fillStyle='rgba(136,136,136,0.8)'; ctx.font='10px -apple-system'; ctx.textAlign='right';
-  for (let i=0;i<=2;i++) { const v=yMin+((yMax-yMin)/2)*i; const y=yPos(v); ctx.fillText(Math.round(v),pad.left-6,y+3); }
-  // X labels
-  ctx.textAlign='center';
-  labels.forEach((l,i) => ctx.fillText(l,xPos(i),H-6));
-  // No data message
-  if (validVals.length === 0) {
-    ctx.fillStyle='rgba(136,136,136,0.5)'; ctx.font='12px -apple-system'; ctx.textAlign='center';
-    ctx.fillText('Complete Cooper Tests to see chart', W/2, H/2); return;
-  }
-  // Area fill
-  const pts = values.map((v,i) => v!==null?{x:xPos(i),y:yPos(v)}:null);
-  const vpts = pts.filter(p=>p!==null);
-  if (vpts.length >= 1) {
-    const grad = ctx.createLinearGradient(0,pad.top,0,pad.top+cH);
-    grad.addColorStop(0,color+'35'); grad.addColorStop(1,'transparent');
-    ctx.beginPath(); ctx.fillStyle=grad;
-    ctx.moveTo(vpts[0].x, pad.top+cH);
-    vpts.forEach(p=>ctx.lineTo(p.x,p.y));
-    ctx.lineTo(vpts[vpts.length-1].x, pad.top+cH);
-    ctx.closePath(); ctx.fill();
-    if (vpts.length >= 2) {
-      ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.lineCap='round';
-      vpts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y)); ctx.stroke();
-    }
-    vpts.forEach(p => {
-      ctx.beginPath(); ctx.arc(p.x,p.y,5,0,Math.PI*2);
-      ctx.fillStyle=color; ctx.fill();
-      ctx.strokeStyle='#0A0A0A'; ctx.lineWidth=2; ctx.stroke();
-    });
-    ctx.fillStyle=color; ctx.font='bold 11px -apple-system'; ctx.textAlign='center';
-    vpts.forEach((p,i) => { const v=values[pts.indexOf(p)]; ctx.fillText(Math.round(v),p.x,p.y-10); });
+  for(let i=0;i<=2;i++){const v=yMin+((yMax-yMin)/2)*i;ctx.fillText(Math.round(v),pad.left-6,yPos(v)+3);}
+  ctx.textAlign='center'; labels.forEach((l,i)=>ctx.fillText(l,xPos(i),H-6));
+  if(valid.length===0){ctx.fillStyle='rgba(136,136,136,0.5)';ctx.font='12px -apple-system';ctx.textAlign='center';ctx.fillText('Complete Cooper Tests to see chart',W/2,H/2);return;}
+  const pts=values.map((v,i)=>v!==null?{x:xPos(i),y:yPos(v)}:null);
+  const vpts=pts.filter(p=>p!==null);
+  if(vpts.length>=1){
+    const grad=ctx.createLinearGradient(0,pad.top,0,pad.top+cH);
+    grad.addColorStop(0,color+'35');grad.addColorStop(1,'transparent');
+    ctx.beginPath();ctx.fillStyle=grad;ctx.moveTo(vpts[0].x,pad.top+cH);
+    vpts.forEach(p=>ctx.lineTo(p.x,p.y));ctx.lineTo(vpts[vpts.length-1].x,pad.top+cH);ctx.closePath();ctx.fill();
+    if(vpts.length>=2){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.lineCap='round';vpts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.stroke();}
+    vpts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#0A0A0A';ctx.lineWidth=2;ctx.stroke();});
+    ctx.fillStyle=color;ctx.font='bold 11px -apple-system';ctx.textAlign='center';
+    vpts.forEach(p=>{const v=values[pts.indexOf(p)];ctx.fillText(Math.round(v),p.x,p.y-10);});
   }
 }
-
-// ─── INIT ─────────────────────────────────────────────────────────────────────
-render();
 </script>
 </body>
 </html>
