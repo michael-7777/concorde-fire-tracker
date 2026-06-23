@@ -24,7 +24,7 @@ const firebaseConfig = {
 };
 
 const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
+const db = getFirestore(firebaseApp, 'cf-db');
 
 // ─── FIREBASE API (exposed to window) ────────────────────────────────────────
 window.FB = {
