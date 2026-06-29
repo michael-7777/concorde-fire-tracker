@@ -48,12 +48,12 @@ window.FB = {
   },
 
   // Workouts
-  async saveWorkout(playerId, workoutId, phaseIdx, data) {
-    const key = `${playerId}_${phaseIdx}_${workoutId}`;
-    await setDoc(doc(db, 'workouts', key), { playerId, workoutId, phaseIdx, ...data });
+  async saveWorkout(playerId, workoutId, phaseIdx, weekNum, data) {
+    const key = `${playerId}_${phaseIdx}_w${weekNum}_${workoutId}`;
+    await setDoc(doc(db, 'workouts', key), { playerId, workoutId, phaseIdx, weekNum, ...data });
   },
-  async removeWorkout(playerId, workoutId, phaseIdx) {
-    const key = `${playerId}_${phaseIdx}_${workoutId}`;
+  async removeWorkout(playerId, workoutId, phaseIdx, weekNum) {
+    const key = `${playerId}_${phaseIdx}_w${weekNum}_${workoutId}`;
     await deleteDoc(doc(db, 'workouts', key));
   },
   listenWorkouts(callback) {
@@ -386,8 +386,9 @@ const PROGRAM = [
 let currentTab = 'today';
 let currentDayIndex = (() => { const d = new Date().getDay(); return d===0?6:d-1; })();
 let currentPhaseIndex = parseInt(localStorage.getItem('cf_phase')||'0');
+let currentWeekNum = parseInt(localStorage.getItem('cf_week')||'1');
 let activePlayerId = localStorage.getItem('cf_active_player') || null;
-let modalWorkout = null; let modalPhaseIdx = null;
+let modalWorkout = null; let modalPhaseIdx = null; let modalWeekNum = 1;
 let editingPlayerId = null;
 
 // Cloud data (updated by Firestore listeners)
@@ -442,8 +443,8 @@ if (window._fbReady) {
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function getActivePlayer() { return cloudPlayers.find(p=>p.id===activePlayerId)||null; }
-function getEntry(playerId, workoutId, phaseIdx) {
-  return cloudWorkouts[`${playerId}_${phaseIdx}_${workoutId}`] || null;
+function getEntry(playerId, workoutId, phaseIdx, weekNum) {
+  return cloudWorkouts[`${playerId}_${phaseIdx}_w${weekNum}_${workoutId}`] || null;
 }
 function getWeightLog(playerId) { return cloudWeights[playerId] || []; }
 
@@ -485,7 +486,7 @@ function renderToday() {
   const dayData = phase.days[currentDayIndex];
   const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const dateStr = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-  const done = dayData.workouts.filter(w=>{ const e=getEntry(player.id,w.id,currentPhaseIndex); return e&&e.completed; }).length;
+  const done = dayData.workouts.filter(w=>{ const e=getEntry(player.id,w.id,currentPhaseIndex,currentWeekNum); return e&&e.completed; }).length;
   const total = dayData.workouts.length;
   const pct = total>0?Math.round((done/total)*100):0;
   const circ = 2*Math.PI*28;
@@ -495,6 +496,10 @@ function renderToday() {
   let html = `<div class="page-header"><h1>${dateStr}</h1></div>
   <div class="phase-selector">
     ${PROGRAM.map((p,i)=>`<button class="phase-btn${i===currentPhaseIndex?' active':''}" onclick="setPhase(${i})">Wk ${p.weeks}<br><span style="font-weight:500;font-size:10px">${p.phase}</span></button>`).join('')}
+  </div>
+  <div style="display:flex;gap:6px;padding:8px 16px 0">
+    <button class="phase-btn${currentWeekNum===1?' active':''}" onclick="setWeek(1)" style="font-size:13px;padding:8px">Week 1</button>
+    <button class="phase-btn${currentWeekNum===2?' active':''}" onclick="setWeek(2)" style="font-size:13px;padding:8px">Week 2</button>
   </div>`;
 
   if (streak>0) html += `<div class="streak-banner">
@@ -519,9 +524,9 @@ function renderToday() {
   </div>
   <div class="card">`;
   dayData.workouts.forEach(w => {
-    const entry = getEntry(player.id, w.id, currentPhaseIndex);
+    const entry = getEntry(player.id, w.id, currentPhaseIndex, currentWeekNum);
     const isDone = entry && entry.completed;
-    html += `<div class="workout-row" onclick="openModal('${w.id}',${currentPhaseIndex})">
+    html += `<div class="workout-row" onclick="openModal('${w.id}',${currentPhaseIndex},${currentWeekNum})">
       <div class="check-circle${isDone?' done':''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
       <div class="workout-info">
         <div class="workout-name${isDone?' done':''}">${w.name}</div>
@@ -538,7 +543,8 @@ function renderToday() {
 function renderNoPlayer() {
   return `<div class="no-player"><div class="no-player-icon">⚽</div><h2>No Players Yet</h2><p>Add players to start tracking workouts for your team.</p><button class="btn-add-first" onclick="openPModal()">+ Add First Player</button></div>`;
 }
-function setPhase(i) { currentPhaseIndex=i; localStorage.setItem('cf_phase',i); render(); }
+function setPhase(i) { currentPhaseIndex=i; currentWeekNum=1; localStorage.setItem('cf_phase',i); localStorage.setItem('cf_week',1); render(); }
+function setWeek(w) { currentWeekNum=w; localStorage.setItem('cf_week',w); render(); }
 function navDay(dir) { currentDayIndex=(currentDayIndex+7+dir)%7; render(); }
 function calcStreak(playerId) {
   const doneDays = new Set(Object.values(cloudWorkouts).filter(e=>e.playerId===playerId&&e.completed&&e.date).map(e=>e.date));
@@ -559,14 +565,20 @@ function renderProgram() {
   PROGRAM.forEach((phase,pi) => {
     html += `<div class="section-label">Week ${phase.weeks} — ${phase.phase}</div>`;
     phase.days.forEach(dayData => {
-      const done = dayData.workouts.filter(w=>{ const e=getEntry(player.id,w.id,pi); return e&&e.completed; }).length;
-      const dots = dayData.workouts.map(w=>{ const e=getEntry(player.id,w.id,pi); return `<div style="width:8px;height:8px;border-radius:50%;background:${e&&e.completed?'var(--gold)':'var(--border)'}"></div>`; }).join('');
+      // Count completions across both weeks
+      const done1 = dayData.workouts.filter(w=>{ const e=getEntry(player.id,w.id,pi,1); return e&&e.completed; }).length;
+      const done2 = dayData.workouts.filter(w=>{ const e=getEntry(player.id,w.id,pi,2); return e&&e.completed; }).length;
+      const total = dayData.workouts.length;
+      const dots1 = dayData.workouts.map(w=>{ const e=getEntry(player.id,w.id,pi,1); return `<div style="width:7px;height:7px;border-radius:50%;background:${e&&e.completed?'var(--gold)':'var(--border)'}"></div>`; }).join('');
+      const dots2 = dayData.workouts.map(w=>{ const e=getEntry(player.id,w.id,pi,2); return `<div style="width:7px;height:7px;border-radius:50%;background:${e&&e.completed?'#7EB8D4':'var(--border)'}"></div>`; }).join('');
       html += `<div class="card" style="margin-bottom:2px;border-radius:10px" onclick="openDayDetail(${pi},'${dayData.day}')">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">
           <div style="font-size:15px;font-weight:700">${dayData.day}</div>
           <div style="display:flex;align-items:center;gap:10px">
-            <div style="display:flex;gap:4px">${dots}</div>
-            <div style="font-size:12px;color:${done===dayData.workouts.length?'var(--gold)':'var(--muted)'};font-weight:600">${done}/${dayData.workouts.length}</div>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div style="display:flex;gap:3px;align-items:center"><span style="font-size:9px;color:var(--muted);width:14px">W1</span>${dots1}</div>
+              <div style="display:flex;gap:3px;align-items:center"><span style="font-size:9px;color:var(--muted);width:14px">W2</span>${dots2}</div>
+            </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--border)" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
         </div>
@@ -577,7 +589,8 @@ function renderProgram() {
   return html;
 }
 
-function openDayDetail(phaseIdx, dayName) {
+function openDayDetail(phaseIdx, dayName, weekNum) {
+  weekNum = weekNum || currentWeekNum;
   const player = getActivePlayer();
   const dayData = PROGRAM[phaseIdx].days.find(d=>d.day===dayName);
   if (!dayData||!player) return;
@@ -585,11 +598,16 @@ function openDayDetail(phaseIdx, dayName) {
   let html = `<div class="page-header" style="display:flex;align-items:center;gap:12px">
     <button onclick="render()" style="background:none;border:none;color:var(--gold);font-size:15px;font-weight:600;padding:0;cursor:pointer">← Back</button>
     <div><h1 style="font-size:18px">${dayData.day}</h1><div class="sub">Week ${PROGRAM[phaseIdx].weeks} · ${PROGRAM[phaseIdx].phase}</div></div>
-  </div><div class="card">`;
+  </div>
+  <div style="display:flex;gap:6px;padding:12px 16px">
+    <button class="phase-btn${weekNum===1?' active':''}" onclick="openDayDetail(${phaseIdx},'${dayName}',1)" style="font-size:13px;padding:8px">Week 1</button>
+    <button class="phase-btn${weekNum===2?' active':''}" onclick="openDayDetail(${phaseIdx},'${dayName}',2)" style="font-size:13px;padding:8px">Week 2</button>
+  </div>
+  <div class="card">`;
   dayData.workouts.forEach(w => {
-    const entry = getEntry(player.id, w.id, phaseIdx);
+    const entry = getEntry(player.id, w.id, phaseIdx, weekNum);
     const isDone = entry && entry.completed;
-    html += `<div class="workout-row" onclick="openModal('${w.id}',${phaseIdx})">
+    html += `<div class="workout-row" onclick="openModal('${w.id}',${phaseIdx},${weekNum})">
       <div class="check-circle${isDone?' done':''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
       <div class="workout-info">
         <div class="workout-name${isDone?' done':''}">${w.name}</div>
@@ -722,14 +740,14 @@ function renderTeam() {
 }
 
 // ─── WORKOUT MODAL ────────────────────────────────────────────────────────────
-function openModal(workoutId, phaseIdx) {
+function openModal(workoutId, phaseIdx, weekNum) {
   const player = getActivePlayer();
   if (!player) return;
   let workout = null;
   PROGRAM[phaseIdx].days.forEach(d=>d.workouts.forEach(w=>{ if(w.id===workoutId) workout=w; }));
   if (!workout) return;
-  modalWorkout=workout; modalPhaseIdx=phaseIdx;
-  const entry = getEntry(player.id, workoutId, phaseIdx)||{};
+  modalWorkout=workout; modalPhaseIdx=phaseIdx; modalWeekNum=weekNum;
+  const entry = getEntry(player.id, workoutId, phaseIdx, weekNum)||{};
   document.getElementById('modal-title').textContent = workout.name;
   document.getElementById('modal-player').textContent = player.name;
   document.getElementById('modal-tip').textContent = workout.tip;
@@ -754,7 +772,7 @@ async function saveWorkout() {
   const notes = document.getElementById('modal-notes-input').value.trim();
   document.getElementById('modal-overlay').classList.remove('open');
   setSyncing(true);
-  await window.FB.saveWorkout(player.id, modalWorkout.id, modalPhaseIdx, { completed:true, score, notes, date:new Date().toISOString().split('T')[0] });
+  await window.FB.saveWorkout(player.id, modalWorkout.id, modalPhaseIdx, modalWeekNum, { completed:true, score, notes, date:new Date().toISOString().split('T')[0] });
   setSyncing(false);
   modalWorkout=null;
 }
@@ -763,7 +781,7 @@ async function unmarkWorkout() {
   if (!modalWorkout||!player) return;
   document.getElementById('modal-overlay').classList.remove('open');
   setSyncing(true);
-  await window.FB.removeWorkout(player.id, modalWorkout.id, modalPhaseIdx);
+  await window.FB.removeWorkout(player.id, modalWorkout.id, modalPhaseIdx, modalWeekNum);
   setSyncing(false);
   modalWorkout=null;
 }
